@@ -3,10 +3,10 @@ import Foundation
 /// A part or consumable used during a service.
 public struct Part: Identifiable, Hashable, Sendable, Codable {
     public let id: UUID
-    public var name: String
+    public private(set) var name: String
     /// Manufacturer part number (артикул), if known.
     public var partNumber: String?
-    public var unitPrice: Money
+    public private(set) var unitPrice: Money
     public private(set) var quantity: Int
 
     public init(
@@ -16,12 +16,34 @@ public struct Part: Identifiable, Hashable, Sendable, Codable {
         unitPrice: Money,
         quantity: Int = 1
     ) throws(ValidationError) {
+        try Self.validate(name: name)
+        try Self.validate(unitPrice: unitPrice)
         guard quantity > 0 else { throw .nonPositiveQuantity(quantity) }
         self.id = id
         self.name = name
         self.partNumber = partNumber
         self.unitPrice = unitPrice
         self.quantity = quantity
+    }
+
+    /// Sets a new name, enforcing the same invariant as `init`.
+    public mutating func updateName(_ name: String) throws(ValidationError) {
+        try Self.validate(name: name)
+        self.name = name
+    }
+
+    /// Sets a new unit price, enforcing the same invariant as `init`.
+    public mutating func updateUnitPrice(_ unitPrice: Money) throws(ValidationError) {
+        try Self.validate(unitPrice: unitPrice)
+        self.unitPrice = unitPrice
+    }
+
+    private static func validate(name: String) throws(ValidationError) {
+        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw .emptyPartName }
+    }
+
+    private static func validate(unitPrice: Money) throws(ValidationError) {
+        guard unitPrice >= .zero else { throw .negativeAmount(unitPrice) }
     }
 
     /// Sets a new quantity, enforcing the same invariant as `init`.

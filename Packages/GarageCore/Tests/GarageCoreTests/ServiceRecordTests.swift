@@ -48,7 +48,7 @@ private func makeRecord(parts: [Part]) throws -> ServiceRecord {
     var record = try makeRecord(parts: [
         Part(name: "Масляный фильтр", partNumber: "90915-YZZD4", unitPrice: Money(rubles: 1_200))
     ])
-    record.serviceType = .other("Замена свечей")
+    try record.updateServiceType(.other("Замена свечей"))
 
     #expect(try roundTrip(record) == record)
 }
@@ -72,4 +72,50 @@ private func makeRecord(parts: [Part]) throws -> ServiceRecord {
         try record.updateMileage(-7)
     }
     #expect(record.mileageKm == 87_500)
+}
+
+@Test func recordRejectsNegativeLaborCost() {
+    #expect(throws: ValidationError.negativeAmount(Money(kopecks: -1))) {
+        try ServiceRecord(
+            vehicleID: UUID(), date: Date(), mileageKm: 1, serviceType: .repair, laborCost: Money(kopecks: -1))
+    }
+}
+
+@Test(arguments: ["", "  "])
+func recordRejectsBlankOtherServiceType(text: String) {
+    #expect(throws: ValidationError.emptyServiceTypeDescription) {
+        try ServiceRecord(vehicleID: UUID(), date: Date(), mileageKm: 1, serviceType: .other(text), laborCost: .zero)
+    }
+}
+
+@Test func recordUpdatesValidateAndKeepOldValueOnFailure() throws {
+    var record = try makeRecord(parts: [])
+
+    #expect(throws: ValidationError.emptyServiceTypeDescription) { try record.updateServiceType(.other(" ")) }
+    #expect(throws: ValidationError.negativeAmount(Money(kopecks: -1))) {
+        try record.updateLaborCost(Money(kopecks: -1))
+    }
+    #expect(record.serviceType == .oilChange)
+    #expect(record.laborCost == Money(rubles: 1_500))
+}
+
+@Test func decodingRecordValidatesLaborCostAndServiceType() throws {
+    let record = try makeRecord(parts: [])
+    let json = try encodedString(record)
+
+    let negative = json.replacingOccurrences(of: #""laborCost":150000"#, with: #""laborCost":-1"#)
+    #expect(throws: ValidationError.negativeAmount(Money(kopecks: -1))) { try decode(ServiceRecord.self, from: negative) }
+
+    let blank = json.replacingOccurrences(of: #""oilChange""#, with: #""other:  ""#)
+    #expect(throws: ValidationError.emptyServiceTypeDescription) { try decode(ServiceRecord.self, from: blank) }
+}
+
+@Test func sequenceTotalCostSumsRecords() throws {
+    let records = [
+        try makeRecord(parts: [Part(name: "Фильтр", unitPrice: Money(rubles: 500), quantity: 2)]),
+        try makeRecord(parts: []),
+    ]
+
+    #expect(records.totalCost == Money(rubles: 2_500 + 1_500))
+    #expect([ServiceRecord]().totalCost == .zero)
 }

@@ -28,3 +28,20 @@ import Testing
     #expect(try encodedString(price) == "12345")
     #expect(try roundTrip(price) == price)
 }
+
+@Test(arguments: [
+    ("1250", 125_000), ("1250,5", 125_050), ("1250.50", 125_050), ("0,05", 5), ("7.", nil),
+    ("1 250,50", 125_050), ("1\u{00A0}250", 125_000), ("1\u{202F}250,00", 125_000), (" 99 ", 9_900),
+])
+func parsingAcceptsSpacesAndBothSeparators(text: String, kopecks: Int?) throws {
+    if let kopecks {
+        #expect(try Money(parsing: text) == Money(kopecks: kopecks))
+    } else {
+        #expect(throws: ValidationError.invalidAmount(text)) { try Money(parsing: text) }
+    }
+}
+
+@Test(arguments: ["", "  ", "-5", "+5", "abc", "12a", "1,234", "1,2,3", ",50", "1e3", "٣", "99999999999999999999"])
+func parsingRejectsInvalidInput(text: String) {
+    #expect(throws: ValidationError.invalidAmount(text)) { try Money(parsing: text) }
+}

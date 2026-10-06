@@ -10,6 +10,8 @@ public final class ServiceRecordEntity {
     public var serviceTypeRaw: String
     public var laborCostKopecks: Int
     public var notes: String
+    /// Receipt photo, kept in storage only: the domain model knows nothing about it.
+    @Attribute(.externalStorage) public var receiptImage: Data?
     @Relationship(deleteRule: .cascade, inverse: \PartEntity.record)
     public var parts: [PartEntity] = []
 

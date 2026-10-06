@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 
 @testable import GarageCore
@@ -55,4 +56,37 @@ import Testing
         try vehicle.updateMileage(-1)
     }
     #expect(vehicle.mileageKm == 1_500)
+}
+
+private func record(for vehicle: Vehicle, mileageKm: Int) throws -> ServiceRecord {
+    try ServiceRecord(
+        vehicleID: vehicle.id, date: Date(), mileageKm: mileageKm, serviceType: .inspection, laborCost: .zero)
+}
+
+@Test func currentMileageIsManualValueWithoutRecords() throws {
+    let car = try Vehicle(kind: .car, make: "Toyota", model: "Camry", year: 2020, mileageKm: 50_000)
+
+    #expect(car.currentMileageKm(records: [ServiceRecord]()) == 50_000)
+}
+
+@Test func currentMileageUsesHighestRecordAndIgnoresOtherVehicles() throws {
+    let car = try Vehicle(kind: .car, make: "Toyota", model: "Camry", year: 2020, mileageKm: 50_000)
+    let other = try Vehicle(kind: .car, make: "Kia", model: "Rio", year: 2018, mileageKm: 10_000)
+    let records = [
+        try record(for: car, mileageKm: 52_000),
+        try record(for: car, mileageKm: 51_000),
+        try record(for: other, mileageKm: 999_999),
+    ]
+
+    #expect(car.currentMileageKm(records: records) == 52_000)
+}
+
+@Test func currentMileageRecoversWhenMistakenRecordIsRemoved() throws {
+    let car = try Vehicle(kind: .car, make: "Toyota", model: "Camry", year: 2020, mileageKm: 50_000)
+    var records = [try record(for: car, mileageKm: 51_000), try record(for: car, mileageKm: 5_000_000)]
+    #expect(car.currentMileageKm(records: records) == 5_000_000)
+
+    records.removeLast()
+
+    #expect(car.currentMileageKm(records: records) == 51_000)
 }

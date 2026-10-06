@@ -7,9 +7,9 @@ public struct ServiceRecord: Identifiable, Hashable, Sendable, Codable {
     public var date: Date
     /// Odometer reading at the time of the service, in kilometres.
     public private(set) var mileageKm: Int
-    public var serviceType: ServiceType
+    public private(set) var serviceType: ServiceType
     /// Cost of the work itself, excluding parts.
-    public var laborCost: Money
+    public private(set) var laborCost: Money
     public var notes: String
     public var parts: [Part]
 
@@ -24,6 +24,8 @@ public struct ServiceRecord: Identifiable, Hashable, Sendable, Codable {
         parts: [Part] = []
     ) throws(ValidationError) {
         guard mileageKm >= 0 else { throw .negativeMileage(mileageKm) }
+        try Self.validate(serviceType: serviceType)
+        try Self.validate(laborCost: laborCost)
         self.id = id
         self.vehicleID = vehicleID
         self.date = date
@@ -38,6 +40,30 @@ public struct ServiceRecord: Identifiable, Hashable, Sendable, Codable {
     public mutating func updateMileage(_ mileageKm: Int) throws(ValidationError) {
         guard mileageKm >= 0 else { throw .negativeMileage(mileageKm) }
         self.mileageKm = mileageKm
+    }
+
+    /// Sets a new service type, enforcing the same invariant as `init`.
+    public mutating func updateServiceType(_ serviceType: ServiceType) throws(ValidationError) {
+        try Self.validate(serviceType: serviceType)
+        self.serviceType = serviceType
+    }
+
+    /// Sets a new labor cost, enforcing the same invariant as `init`.
+    public mutating func updateLaborCost(_ laborCost: Money) throws(ValidationError) {
+        try Self.validate(laborCost: laborCost)
+        self.laborCost = laborCost
+    }
+
+    private static func validate(serviceType: ServiceType) throws(ValidationError) {
+        if case .other(let text) = serviceType,
+            text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
+            throw .emptyServiceTypeDescription
+        }
+    }
+
+    private static func validate(laborCost: Money) throws(ValidationError) {
+        guard laborCost >= .zero else { throw .negativeAmount(laborCost) }
     }
 
     public var partsCost: Money {
@@ -64,5 +90,12 @@ public struct ServiceRecord: Identifiable, Hashable, Sendable, Codable {
             notes: container.decode(String.self, forKey: .notes),
             parts: container.decode([Part].self, forKey: .parts)
         )
+    }
+}
+
+extension Sequence<ServiceRecord> {
+    /// The sum of `totalCost` over all records.
+    public var totalCost: Money {
+        reduce(.zero) { $0 + $1.totalCost }
     }
 }

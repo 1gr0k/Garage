@@ -44,6 +44,14 @@ public struct Vehicle: Identifiable, Hashable, Sendable, Codable {
         self.mileageKm = mileageKm
     }
 
+    /// The effective odometer reading: the manual value or the highest mileage among this vehicle's records.
+    ///
+    /// Derived rather than stored, so a mistaken record stops affecting it once it is removed.
+    public func currentMileageKm(records: some Sequence<ServiceRecord>) -> Int {
+        let recorded = records.lazy.filter { $0.vehicleID == id }.map(\.mileageKm).max() ?? 0
+        return max(mileageKm, recorded)
+    }
+
     private enum CodingKeys: String, CodingKey {
         case id, kind, make, model, year, mileageKm
     }

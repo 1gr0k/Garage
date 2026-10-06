@@ -95,7 +95,7 @@ private struct Fixture {
     let f = try Fixture()
     var record = try makeRecord(for: f.vehicle)
     let custom = try ServiceRecordEntity(record, vehicle: f.vehicleEntity)
-    record.serviceType = .oilChange
+    try record.updateServiceType(.oilChange)
     let oil = try ServiceRecordEntity(record, vehicle: f.vehicleEntity)
 
     #expect(custom.serviceTypeRaw == "other:Замена свечей")

@@ -25,14 +25,17 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             List(vehicles) { vehicle in
-                VStack(alignment: .leading) {
-                    Text(vehicle.displayName)
-                        .font(.headline)
-                    Text(String(vehicle.year))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                NavigationLink(value: vehicle.id) {
+                    VStack(alignment: .leading) {
+                        Text(vehicle.displayName)
+                            .font(.headline)
+                        Text(String(vehicle.year))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
+            .navigationDestination(for: Vehicle.ID.self) { VehicleDetailView(vehicleID: $0) }
             .overlay {
                 if vehicles.isEmpty {
                     ContentUnavailableView("No Vehicles", systemImage: "car")
