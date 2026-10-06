@@ -19,6 +19,9 @@ Without it, `swift test` fails with `plugin for module 'TestingMacros' not found
 swift test --package-path Packages/GarageCore
 swift test --package-path Packages/GarageCore --filter displayNameCombinesMakeAndModel   # single test
 
+# GarageStorage tests (iOS-only: no `swift test`; needs a simulator)
+(cd Packages/GarageStorage && xcodebuild test -scheme GarageStorage -destination '<see CLAUDE.local.md>')
+
 # App build
 xcodebuild -project Garage.xcodeproj -scheme Garage -destination 'generic/platform=iOS Simulator' build
 
@@ -31,6 +34,7 @@ There are no shared schemes checked in; Xcode auto-generates one per target (`Ga
 ## Architecture
 
 - **`Packages/GarageCore`** — local SwiftPM package holding the model/domain layer (`Vehicle`, sample data). Platform-independent (iOS 18 / macOS 15), so its logic is testable with plain `swift test`. Types consumed by the app must be `public`.
+- **`Packages/GarageStorage`** — iOS-only local package with SwiftData persistence: `@Model` entities (`VehicleEntity`, `ServiceRecordEntity`, `PartEntity`) kept separate from the domain types, domain ↔ entity mapping (`toDomain()` / `update(from:)`), `GarageStore.makeContainer`, and `SampleSeeder`. Depends on `GarageCore`. It can't build on macOS, so it is tested only via `xcodebuild test` on a simulator.
 - **`Garage/`** — the SwiftUI iOS app target. It's a *synchronized folder*: every file inside is automatically a member of the `Garage` target, so adding a Swift file needs no project-file edit. The app target builds with `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` and Swift 6 strict concurrency; the package does not set default MainActor isolation.
 
 Put non-UI logic in `GarageCore` and keep the app target thin.
@@ -46,10 +50,12 @@ This is the new Xcode 27 JSON-based project format (JSON with trailing commas), 
 ## Rules
 
 - `GarageCore` must build on Linux: Foundation is allowed; UIKit, SwiftUI, AppKit, Combine and other Apple-only frameworks are not.
+- SwiftData only in `GarageStorage`.
 - Never create or edit `project.pbxproj`; this project uses `project.xcproj` only.
 
 ## Definition of done
 
 1. `swift test --package-path Packages/GarageCore` passes.
-2. The app builds with the `xcodebuild … build` command above.
-3. If `project.xcproj` changed: `xcprojformatter --update` was run and `git diff` of it is minimal.
+2. `xcodebuild test` for GarageStorage passes (see Commands; destination from `CLAUDE.local.md`).
+3. The app builds with the `xcodebuild … build` command above.
+4. If `project.xcproj` changed: `xcprojformatter --update` was run and `git diff` of it is minimal.

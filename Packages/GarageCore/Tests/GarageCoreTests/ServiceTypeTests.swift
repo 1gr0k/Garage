@@ -27,3 +27,24 @@ private let allTypes: [ServiceType] = [
         try decode(ServiceType.self, from: #""tuning""#)
     }
 }
+
+private let allStorageStrings = [
+    "oilChange", "filters", "tires", "brakes", "chain", "suspension", "inspection", "repair",
+    "other:Замена свечей",
+]
+
+@Test func storageStringMatchesJSONElements() {
+    #expect(allTypes.map(\.storageString) == allStorageStrings)
+}
+
+@Test func storageStringRoundTrips() throws {
+    for type in allTypes + [.other("oilChange"), .other("")] {
+        #expect(try ServiceType(storageString: type.storageString) == type)
+    }
+}
+
+@Test func unknownStorageStringThrows() {
+    #expect(throws: ValidationError.unknownServiceType("tuning")) {
+        try ServiceType(storageString: "tuning")
+    }
+}

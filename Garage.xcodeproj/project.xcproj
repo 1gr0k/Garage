@@ -14,6 +14,9 @@
     {
       "kind": "local",
       "path": "Packages/GarageCore",
+    }, {
+      "kind": "local",
+      "path": "Packages/GarageStorage",
     },
   ],
   "files": [
@@ -41,6 +44,10 @@
         {
           "package": "GarageCore",
           "product-name": "GarageCore",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "package": "GarageStorage",
+          "product-name": "GarageStorage",
           "build-phase": { "build-phase": "frameworks" },
         },
       ],

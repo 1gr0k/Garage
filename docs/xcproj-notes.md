@@ -64,3 +64,7 @@ xcodebuild -project Garage.xcodeproj -list            # Resolved source packages
 xcodebuild -project Garage.xcodeproj -scheme Garage \
   -destination 'generic/platform=iOS Simulator' build
 ```
+
+## Два локальных пакета с зависимостью между ними
+
+`Packages/GarageStorage` зависит от `Packages/GarageCore` через `.package(path: "../GarageCore")`, а приложение линкует оба. Проверено: в `packages` проекта перечислены оба пакета, в `package-product-members` таргета — оба продукта; `xcodebuild -list` показывает оба в Resolved source packages (`@ local`), сборка проходит. Запись `GarageCore` остаётся, потому что приложение импортирует его напрямую. Вариант без неё не проверялся.

@@ -4,4 +4,5 @@ import Foundation
 public enum ValidationError: Error, Equatable, Sendable {
     case negativeMileage(Int)
     case nonPositiveQuantity(Int)
+    case unknownServiceType(String)
 }

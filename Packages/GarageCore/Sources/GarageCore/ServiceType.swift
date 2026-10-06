@@ -17,12 +17,26 @@ public enum ServiceType: Hashable, Sendable {
     case other(String)
 }
 
-extension ServiceType: Codable {
+extension ServiceType {
     private static let otherPrefix = "other:"
 
-    public init(from decoder: any Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        let string = try container.decode(String.self)
+    /// The persisted string form, shared by JSON encoding and database storage.
+    public var storageString: String {
+        switch self {
+        case .oilChange: "oilChange"
+        case .filters: "filters"
+        case .tires: "tires"
+        case .brakes: "brakes"
+        case .chain: "chain"
+        case .suspension: "suspension"
+        case .inspection: "inspection"
+        case .repair: "repair"
+        case .other(let text): Self.otherPrefix + text
+        }
+    }
+
+    /// Restores a value from its `storageString`.
+    public init(storageString string: String) throws(ValidationError) {
         if string.hasPrefix(Self.otherPrefix) {
             self = .other(String(string.dropFirst(Self.otherPrefix.count)))
             return
@@ -36,7 +50,18 @@ extension ServiceType: Codable {
         case "suspension": self = .suspension
         case "inspection": self = .inspection
         case "repair": self = .repair
-        default:
+        default: throw .unknownServiceType(string)
+        }
+    }
+}
+
+extension ServiceType: Codable {
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let string = try container.decode(String.self)
+        do {
+            try self.init(storageString: string)
+        } catch {
             throw DecodingError.dataCorruptedError(
                 in: container,
                 debugDescription: "Unknown service type \"\(string)\""
@@ -46,20 +71,6 @@ extension ServiceType: Codable {
 
     public func encode(to encoder: any Encoder) throws {
         var container = encoder.singleValueContainer()
-        try container.encode(encodedString)
-    }
-
-    private var encodedString: String {
-        switch self {
-        case .oilChange: "oilChange"
-        case .filters: "filters"
-        case .tires: "tires"
-        case .brakes: "brakes"
-        case .chain: "chain"
-        case .suspension: "suspension"
-        case .inspection: "inspection"
-        case .repair: "repair"
-        case .other(let text): Self.otherPrefix + text
-        }
+        try container.encode(storageString)
     }
 }
