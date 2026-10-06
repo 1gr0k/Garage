@@ -43,6 +43,10 @@ public struct Money: Hashable, Sendable, Comparable, AdditiveArithmetic {
 
     public static let zero = Money(kopecks: 0)
 
+    /// The largest unit price of a part or labor cost accepted by the models (10 000 000 ₽);
+    /// keeps sums over parts and records far from overflow.
+    public static let maxAmount = Money(rubles: 10_000_000)
+
     public static func + (lhs: Money, rhs: Money) -> Money {
         Money(kopecks: lhs.kopecks + rhs.kopecks)
     }

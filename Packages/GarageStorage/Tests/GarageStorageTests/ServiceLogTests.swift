@@ -71,7 +71,28 @@ private func properties(of data: Data) throws -> [CFString: Any] {
 
     let stored = try #require(try context.fetch(ServiceRecordEntity.descriptor(forVehicle: car.id)).first)
     #expect(stored.receiptImage == photo)
+    #expect(stored.hasReceipt)
     #expect(entity.mileageKm == car.mileageKm)
+}
+
+private struct SaveFailure: Error {}
+
+@Test func failedSaveRollsBackTheInsertedRecord() throws {
+    let context = ModelContext(try GarageStore.makeContainer(inMemory: true))
+    let car = Vehicle.samples[0]
+    let entity = VehicleEntity(car)
+    context.insert(entity)
+    try context.save()
+
+    #expect(throws: SaveFailure.self) {
+        try ServiceLog.add(
+            makeRecord(for: car, date: 1, mileageKm: 1), receiptImage: nil, to: entity, in: context
+        ) { _ in throw SaveFailure() }
+    }
+
+    #expect(entity.serviceRecords.isEmpty)
+    #expect(try context.fetch(ServiceRecordEntity.descriptor(forVehicle: car.id)).isEmpty)
+    #expect(!context.hasChanges)
 }
 
 @Test func addWithoutReceiptLeavesImageNil() throws {
@@ -83,13 +104,15 @@ private func properties(of data: Data) throws -> [CFString: Any] {
     let stored = try ServiceLog.add(makeRecord(for: car, date: 1, mileageKm: 1), to: entity, in: context)
 
     #expect(stored.receiptImage == nil)
+    #expect(!stored.hasReceipt)
 }
 
 @Test func prepareDownscalesLargePhotoToJPEG() throws {
     let result = try ReceiptImage.prepare(makePNG(width: 4000, height: 3000))
     let props = try properties(of: result)
 
-    #expect(max(props[kCGImagePropertyPixelWidth] as? Int ?? 0, props[kCGImagePropertyPixelHeight] as? Int ?? 0) <= 2048)
+    #expect(
+        max(props[kCGImagePropertyPixelWidth] as? Int ?? 0, props[kCGImagePropertyPixelHeight] as? Int ?? 0) <= 2048)
     #expect(props[kCGImagePropertyPixelWidth] as? Int == 2048)
     #expect(props[kCGImagePropertyPixelHeight] as? Int == 1536)
     #expect(Array(result.prefix(2)) == [0xFF, 0xD8])

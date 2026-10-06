@@ -24,6 +24,25 @@ func partRejectsNonPositiveQuantity(quantity: Int) {
     }
 }
 
+@Test(arguments: [1, Part.maxQuantity])
+func partAcceptsBoundaryQuantities(quantity: Int) throws {
+    let part = try Part(name: "Болт", unitPrice: Money(rubles: 1), quantity: quantity)
+
+    #expect(part.totalPrice == Money(rubles: quantity))
+}
+
+@Test(arguments: [Part.maxQuantity + 1, Int.max])
+func partRejectsTooLargeQuantity(quantity: Int) throws {
+    #expect(throws: ValidationError.quantityTooLarge(quantity)) {
+        try Part(name: "Болт", unitPrice: Money(rubles: 1), quantity: quantity)
+    }
+    var part = try Part(name: "Болт", unitPrice: Money(rubles: 1), quantity: 2)
+    #expect(throws: ValidationError.quantityTooLarge(quantity)) {
+        try part.updateQuantity(quantity)
+    }
+    #expect(part.quantity == 2)
+}
+
 @Test func decodingPartValidatesQuantity() {
     let json = """
         {"id":"0A1B2C3D-4E5F-6071-8293-A4B5C6D7E8F9","name":"Фильтр","unitPrice":50000,"quantity":0}
@@ -58,6 +77,22 @@ func partRejectsBlankName(name: String) {
     #expect(throws: ValidationError.negativeAmount(Money(kopecks: -1))) {
         try Part(name: "Фильтр", unitPrice: Money(kopecks: -1))
     }
+}
+
+@Test func partAcceptsMaxPriceAndRejectsAbove() throws {
+    let tooMuch = Money(kopecks: Money.maxAmount.kopecks + 1)
+
+    let part = try Part(name: "Двигатель", unitPrice: .maxAmount, quantity: Part.maxQuantity)
+    #expect(part.totalPrice == .maxAmount * Part.maxQuantity)
+
+    #expect(throws: ValidationError.amountTooLarge(tooMuch)) {
+        try Part(name: "Двигатель", unitPrice: tooMuch)
+    }
+    var other = try Part(name: "Фильтр", unitPrice: Money(rubles: 500))
+    #expect(throws: ValidationError.amountTooLarge(tooMuch)) { try other.updateUnitPrice(tooMuch) }
+    #expect(other.unitPrice == Money(rubles: 500))
+    let json = #"{"id":"0A1B2C3D-4E5F-6071-8293-A4B5C6D7E8F9","name":"Х","unitPrice":9223372036854775807,"quantity":1}"#
+    #expect(throws: ValidationError.amountTooLarge(Money(kopecks: .max))) { try decode(Part.self, from: json) }
 }
 
 @Test func decodingPartValidatesNameAndPrice() {

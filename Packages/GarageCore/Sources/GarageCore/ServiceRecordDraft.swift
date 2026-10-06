@@ -132,21 +132,23 @@ public struct ServiceRecordDraft: Hashable, Sendable {
         }
     }
 
+    /// Parses a mileage in kilometers. All whitespace (including U+00A0 and U+202F) is ignored,
+    /// so `"87 400"` is 87400.
+    public static func parseMileage(_ text: String) -> Result<Int, FieldError> {
+        let compact = text.filter { !$0.isWhitespace }
+        guard !compact.isEmpty else { return .failure(.required) }
+        guard let value = Int(compact) else { return .failure(.notANumber) }
+        guard value >= 0 else { return .failure(.invalid(.negativeMileage(value))) }
+        return .success(value)
+    }
+
     private func parseMileage(into errors: inout [Field: FieldError]) -> Int? {
-        let text = mileageText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else {
-            errors[.mileage] = .required
+        switch Self.parseMileage(mileageText) {
+        case .success(let value): return value
+        case .failure(let error):
+            errors[.mileage] = error
             return nil
         }
-        guard let value = Int(text) else {
-            errors[.mileage] = .notANumber
-            return nil
-        }
-        guard value >= 0 else {
-            errors[.mileage] = .invalid(.negativeMileage(value))
-            return nil
-        }
-        return value
     }
 
     private func makeServiceType(into errors: inout [Field: FieldError]) -> ServiceType? {
@@ -185,7 +187,11 @@ public struct ServiceRecordDraft: Hashable, Sendable {
             errors[.partQuantity(draft.id)] = .required
         } else if let value = Int(quantityText) {
             quantity = value
-            if value <= 0 { errors[.partQuantity(draft.id)] = .invalid(.nonPositiveQuantity(value)) }
+            if value <= 0 {
+                errors[.partQuantity(draft.id)] = .invalid(.nonPositiveQuantity(value))
+            } else if value > Part.maxQuantity {
+                errors[.partQuantity(draft.id)] = .invalid(.quantityTooLarge(value))
+            }
         } else {
             errors[.partQuantity(draft.id)] = .notANumber
         }
@@ -205,7 +211,8 @@ public struct ServiceRecordDraft: Hashable, Sendable {
             return allowEmpty ? .success(.zero) : .failure(.required)
         }
         do {
-            return .success(try Money(parsing: text))
+            let value = try Money(parsing: text)
+            return value > .maxAmount ? .failure(.invalid(.amountTooLarge(value))) : .success(value)
         } catch {
             return .failure(.notANumber)
         }

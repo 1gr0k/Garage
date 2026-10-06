@@ -11,7 +11,10 @@ public final class ServiceRecordEntity {
     public var laborCostKopecks: Int
     public var notes: String
     /// Receipt photo, kept in storage only: the domain model knows nothing about it.
-    @Attribute(.externalStorage) public var receiptImage: Data?
+    @Attribute(.externalStorage) public private(set) var receiptImage: Data?
+    /// Whether a receipt photo is attached; lets lists avoid loading `receiptImage` just to check.
+    /// The default lets lightweight migration add the column to existing stores.
+    public private(set) var hasReceipt: Bool = false
     @Relationship(deleteRule: .cascade, inverse: \PartEntity.record)
     public var parts: [PartEntity] = []
 
@@ -31,5 +34,11 @@ public final class ServiceRecordEntity {
         self.serviceTypeRaw = serviceTypeRaw
         self.laborCostKopecks = laborCostKopecks
         self.notes = notes
+    }
+
+    /// Attaches, replaces or (with `nil`) removes the receipt photo, keeping `hasReceipt` in sync.
+    public func setReceiptImage(_ data: Data?) {
+        receiptImage = data
+        hasReceipt = data != nil
     }
 }

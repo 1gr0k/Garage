@@ -52,7 +52,6 @@ This is the new Xcode 27 JSON-based project format (JSON with trailing commas), 
 - `GarageCore` must build on Linux: Foundation is allowed; UIKit, SwiftUI, AppKit, Combine and other Apple-only frameworks are not.
 - SwiftData only in `GarageStorage`.
 - Never create or edit `project.pbxproj`; this project uses `project.xcproj` only.
-- Edit files with the Edit tool or `python3`, not `sed -i`: macOS ships BSD sed, where `sed -i` needs a backup-suffix argument and `sed -i '1i …'` fails.
 - All new user-facing strings go into `Garage/Localizable.xcstrings` right away with a Russian translation (for counts, plural variations one/few/many/other). User data (e.g. `.other(text)`) must not reach the catalog: use `Text(verbatim:)` / `String`.
 - macOS: do not use `sed -i` (BSD syntax differs) and do not shell out to python for edits — use the Edit tool.
 

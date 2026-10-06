@@ -16,7 +16,6 @@ struct ServiceRecordFormView: View {
     @State private var errors: [Field: ServiceRecordDraft.FieldError] = [:]
     @State private var photoItem: PhotosPickerItem?
     @State private var receipt: Data?
-    @State private var isLoadingPhoto = false
     @State private var photoFailed = false
     @State private var saveFailed = false
 
@@ -59,7 +58,7 @@ struct ServiceRecordFormView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save", action: save)
-                        .disabled(isLoadingPhoto)
+                        .disabled(isPhotoPending)
                 }
             }
             .alert("Couldn't Save", isPresented: $saveFailed) {
@@ -73,8 +72,11 @@ struct ServiceRecordFormView: View {
         }
     }
 
+    /// A photo is picked but not yet ready (or its load is about to start).
+    private var isPhotoPending: Bool { photoItem != nil && receipt == nil }
+
     private var mileageHint: String? {
-        guard let value = Int(draft.mileageText.filter { !$0.isWhitespace }), value > currentMileageKm else {
+        guard case .success(let value) = ServiceRecordDraft.parseMileage(draft.mileageText), value > currentMileageKm else {
             return nil
         }
         return String(localized: "Vehicle mileage will be \(value.kilometers)")
@@ -151,23 +153,28 @@ struct ServiceRecordFormView: View {
             })
     }
 
+    /// Loads the picked photo. Only the load for the current selection may touch state:
+    /// a cancelled or superseded load neither stores its result nor reports an error.
     private func loadPhoto(_ item: PhotosPickerItem?) async {
         guard let item else { return }
-        isLoadingPhoto = true
-        defer { isLoadingPhoto = false }
         do {
             guard let data = try await item.loadTransferable(type: Data.self) else {
                 throw ReceiptImageError.unreadableImage
             }
-            let prepared = try await Task.detached { try ReceiptImage.prepare(data) }.value
-            try Task.checkCancellation()
+            let prepared = try await Self.prepareReceipt(data)
+            guard !Task.isCancelled, item == photoItem else { return }
             receipt = prepared
-        } catch is CancellationError {
-            // A newer selection replaced this one.
         } catch {
+            guard !Task.isCancelled, item == photoItem else { return }
             photoItem = nil
             photoFailed = true
         }
+    }
+
+    /// Runs the CPU-heavy re-encoding off the main actor; unlike `Task.detached` it stays a child of the caller.
+    @concurrent
+    private static func prepareReceipt(_ data: Data) async throws -> Data {
+        try ReceiptImage.prepare(data)
     }
 
     private func save() {

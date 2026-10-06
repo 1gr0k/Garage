@@ -81,6 +81,21 @@ private func makeRecord(parts: [Part]) throws -> ServiceRecord {
     }
 }
 
+@Test func recordAcceptsMaxLaborCostAndRejectsAbove() throws {
+    let tooMuch = Money(kopecks: Money.maxAmount.kopecks + 1)
+
+    var record = try ServiceRecord(
+        vehicleID: UUID(), date: Date(), mileageKm: 1, serviceType: .repair, laborCost: .maxAmount)
+    #expect(record.laborCost == .maxAmount)
+
+    #expect(throws: ValidationError.amountTooLarge(tooMuch)) {
+        try ServiceRecord(
+            vehicleID: UUID(), date: Date(), mileageKm: 1, serviceType: .repair, laborCost: tooMuch)
+    }
+    #expect(throws: ValidationError.amountTooLarge(tooMuch)) { try record.updateLaborCost(tooMuch) }
+    #expect(record.laborCost == .maxAmount)
+}
+
 @Test(arguments: ["", "  "])
 func recordRejectsBlankOtherServiceType(text: String) {
     #expect(throws: ValidationError.emptyServiceTypeDescription) {
@@ -104,7 +119,9 @@ func recordRejectsBlankOtherServiceType(text: String) {
     let json = try encodedString(record)
 
     let negative = json.replacingOccurrences(of: #""laborCost":150000"#, with: #""laborCost":-1"#)
-    #expect(throws: ValidationError.negativeAmount(Money(kopecks: -1))) { try decode(ServiceRecord.self, from: negative) }
+    #expect(throws: ValidationError.negativeAmount(Money(kopecks: -1))) {
+        try decode(ServiceRecord.self, from: negative)
+    }
 
     let blank = json.replacingOccurrences(of: #""oilChange""#, with: #""other:  ""#)
     #expect(throws: ValidationError.emptyServiceTypeDescription) { try decode(ServiceRecord.self, from: blank) }

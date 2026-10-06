@@ -12,6 +12,49 @@ private func fieldErrors(_ draft: ServiceRecordDraft) -> [ServiceRecordDraft.Fie
     }
 }
 
+@Test(arguments: ["9999", "1"])
+func draftAcceptsBoundaryPartQuantity(quantity: String) throws {
+    let part = PartDraft(name: "Болт", unitPriceText: "1", quantityText: quantity)
+    let draft = ServiceRecordDraft(mileageText: "1000", parts: [part])
+
+    #expect(fieldErrors(draft) == [:])
+}
+
+@Test(arguments: [("10000", 10_000), ("9223372036854775807", Int.max)])
+func draftRejectsTooLargePartQuantity(text: String, value: Int) {
+    let part = PartDraft(name: "Болт", unitPriceText: "1", quantityText: text)
+    let draft = ServiceRecordDraft(mileageText: "1000", parts: [part])
+
+    #expect(fieldErrors(draft) == [.partQuantity(part.id): .invalid(.quantityTooLarge(value))])
+}
+
+@Test func draftEnforcesAmountLimitOnPriceAndLaborCost() {
+    let atLimit = PartDraft(name: "Болт", unitPriceText: "10 000 000")
+    let above = PartDraft(name: "Гайка", unitPriceText: "10 000 000,01")
+    let draft = ServiceRecordDraft(mileageText: "1000", laborCostText: "10000000.01", parts: [atLimit, above])
+    let tooMuch = Money(kopecks: Money.maxAmount.kopecks + 1)
+
+    #expect(
+        fieldErrors(draft) == [
+            .laborCost: .invalid(.amountTooLarge(tooMuch)),
+            .partUnitPrice(above.id): .invalid(.amountTooLarge(tooMuch)),
+        ])
+    #expect(fieldErrors(ServiceRecordDraft(mileageText: "1", laborCostText: "10000000")) == [:])
+}
+
+@Test(arguments: ["87 400", "87\u{00A0}400", "87\u{202F}400", " 87400 "])
+func mileageParsingIgnoresAllWhitespace(text: String) throws {
+    #expect(try ServiceRecordDraft.parseMileage(text).get() == 87_400)
+    let record = try ServiceRecordDraft(mileageText: text).makeRecord(vehicleID: UUID())
+    #expect(record.mileageKm == 87_400)
+}
+
+@Test func mileageParsingReportsErrors() {
+    #expect(ServiceRecordDraft.parseMileage("  ") == .failure(.required))
+    #expect(ServiceRecordDraft.parseMileage("12k") == .failure(.notANumber))
+    #expect(ServiceRecordDraft.parseMileage("-5") == .failure(.invalid(.negativeMileage(-5))))
+}
+
 @Test func emptyDraftReportsOnlyRequiredMileage() {
     #expect(fieldErrors(ServiceRecordDraft()) == [.mileage: .required])
 }

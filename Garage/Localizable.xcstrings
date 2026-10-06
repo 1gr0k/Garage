@@ -125,6 +125,16 @@
         }
       }
     },
+    "Amount can't exceed 10 000 000 ₽" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сумма не может превышать 10 000 000 ₽"
+          }
+        }
+      }
+    },
     "Amount can't be negative" : {
       "localizations" : {
         "ru" : {
@@ -421,6 +431,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Количество"
+          }
+        }
+      }
+    },
+    "Quantity can't exceed 9999" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Количество не должно превышать 9999"
           }
         }
       }

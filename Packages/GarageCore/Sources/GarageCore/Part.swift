@@ -9,6 +9,9 @@ public struct Part: Identifiable, Hashable, Sendable, Codable {
     public private(set) var unitPrice: Money
     public private(set) var quantity: Int
 
+    /// The largest quantity of one part in a record; keeps `totalPrice` far from overflow.
+    public static let maxQuantity = 9_999
+
     public init(
         id: UUID = UUID(),
         name: String,
@@ -18,7 +21,7 @@ public struct Part: Identifiable, Hashable, Sendable, Codable {
     ) throws(ValidationError) {
         try Self.validate(name: name)
         try Self.validate(unitPrice: unitPrice)
-        guard quantity > 0 else { throw .nonPositiveQuantity(quantity) }
+        try Self.validate(quantity: quantity)
         self.id = id
         self.name = name
         self.partNumber = partNumber
@@ -42,13 +45,19 @@ public struct Part: Identifiable, Hashable, Sendable, Codable {
         guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw .emptyPartName }
     }
 
+    private static func validate(quantity: Int) throws(ValidationError) {
+        guard quantity > 0 else { throw .nonPositiveQuantity(quantity) }
+        guard quantity <= maxQuantity else { throw .quantityTooLarge(quantity) }
+    }
+
     private static func validate(unitPrice: Money) throws(ValidationError) {
         guard unitPrice >= .zero else { throw .negativeAmount(unitPrice) }
+        guard unitPrice <= .maxAmount else { throw .amountTooLarge(unitPrice) }
     }
 
     /// Sets a new quantity, enforcing the same invariant as `init`.
     public mutating func updateQuantity(_ quantity: Int) throws(ValidationError) {
-        guard quantity > 0 else { throw .nonPositiveQuantity(quantity) }
+        try Self.validate(quantity: quantity)
         self.quantity = quantity
     }
 

@@ -56,9 +56,11 @@ extension ValidationError {
         switch self {
         case .negativeMileage: "Mileage can't be negative"
         case .nonPositiveQuantity: "Quantity must be at least 1"
+        case .quantityTooLarge: "Quantity can't exceed 9999"
         case .unknownServiceType: "Unknown service type"
         case .emptyPartName: "Required"
         case .negativeAmount: "Amount can't be negative"
+        case .amountTooLarge: "Amount can't exceed 10 000 000 ₽"
         case .emptyServiceTypeDescription: "Required"
         case .invalidAmount: "Enter a valid amount"
         }

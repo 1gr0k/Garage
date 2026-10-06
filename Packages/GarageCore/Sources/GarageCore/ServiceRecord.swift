@@ -64,6 +64,7 @@ public struct ServiceRecord: Identifiable, Hashable, Sendable, Codable {
 
     private static func validate(laborCost: Money) throws(ValidationError) {
         guard laborCost >= .zero else { throw .negativeAmount(laborCost) }
+        guard laborCost <= .maxAmount else { throw .amountTooLarge(laborCost) }
     }
 
     public var partsCost: Money {

@@ -27,6 +27,10 @@ struct VehicleDetailView: View {
         }
     }
 
+    private var receiptIDs: Set<UUID> {
+        Set(recordEntities.lazy.filter(\.hasReceipt).map(\.id))
+    }
+
     var body: some View {
         if let entity = vehicleEntities.first, let vehicle = try? entity.toDomain() {
             content(entity: entity, vehicle: vehicle)
@@ -37,6 +41,7 @@ struct VehicleDetailView: View {
 
     private func content(entity: VehicleEntity, vehicle: Vehicle) -> some View {
         let records = records
+        let receiptIDs = receiptIDs
         let mileage = vehicle.currentMileageKm(records: records)
         return List {
             Section {
@@ -45,7 +50,7 @@ struct VehicleDetailView: View {
             }
             Section("Service History") {
                 ForEach(records) { record in
-                    ServiceRecordRow(record: record, hasReceipt: hasReceipt(record.id))
+                    ServiceRecordRow(record: record, hasReceipt: receiptIDs.contains(record.id))
                 }
             }
         }
@@ -65,9 +70,6 @@ struct VehicleDetailView: View {
         }
     }
 
-    private func hasReceipt(_ id: UUID) -> Bool {
-        recordEntities.first { $0.id == id }?.receiptImage != nil
-    }
 }
 
 private struct ServiceRecordRow: View {
@@ -79,9 +81,12 @@ private struct ServiceRecordRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(record.serviceType.title)
                     .font(.headline)
-                Text(verbatim: "\(record.date.formatted(date: .abbreviated, time: .omitted)) · \(record.mileageKm.kilometers)")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                Text(
+                    verbatim:
+                        "\(record.date.formatted(date: .abbreviated, time: .omitted)) · \(record.mileageKm.kilometers)"
+                )
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
                 if !record.parts.isEmpty {
                     Text("\(record.parts.count) parts")
                         .font(.subheadline)
