@@ -1,6 +1,6 @@
-import SwiftUI
-import Playgrounds
 import GarageCore
+import Playgrounds
+import SwiftUI
 
 struct ContentView: View {
     var vehicles: [Vehicle] = Vehicle.samples

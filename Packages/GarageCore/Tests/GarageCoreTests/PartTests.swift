@@ -1,8 +1,10 @@
 import Testing
+
 @testable import GarageCore
 
 @Test func totalPriceMultipliesByQuantity() throws {
-    let plug = try Part(name: "Свеча зажигания", partNumber: "NGK-6962", unitPrice: Money(rubles: 650, kopecks: 50), quantity: 4)
+    let plug = try Part(
+        name: "Свеча зажигания", partNumber: "NGK-6962", unitPrice: Money(rubles: 650, kopecks: 50), quantity: 4)
 
     #expect(plug.totalPrice == Money(rubles: 2_602))
 }
@@ -24,8 +26,8 @@ func partRejectsNonPositiveQuantity(quantity: Int) {
 
 @Test func decodingPartValidatesQuantity() {
     let json = """
-    {"id":"0A1B2C3D-4E5F-6071-8293-A4B5C6D7E8F9","name":"Фильтр","unitPrice":50000,"quantity":0}
-    """
+        {"id":"0A1B2C3D-4E5F-6071-8293-A4B5C6D7E8F9","name":"Фильтр","unitPrice":50000,"quantity":0}
+        """
 
     #expect(throws: ValidationError.nonPositiveQuantity(0)) {
         try decode(Part.self, from: json)

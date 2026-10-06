@@ -8,7 +8,7 @@ let package = Package(
         .macOS(.v15),
     ],
     products: [
-        .library(name: "GarageCore", targets: ["GarageCore"]),
+        .library(name: "GarageCore", targets: ["GarageCore"])
     ],
     targets: [
         .target(name: "GarageCore"),

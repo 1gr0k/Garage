@@ -1,4 +1,5 @@
 import Testing
+
 @testable import GarageCore
 
 private let allTypes: [ServiceType] = [
@@ -8,8 +9,8 @@ private let allTypes: [ServiceType] = [
 
 @Test func serviceTypeJSONIsStable() throws {
     let expected = """
-    ["oilChange","filters","tires","brakes","chain","suspension","inspection","repair","other:Замена свечей"]
-    """
+        ["oilChange","filters","tires","brakes","chain","suspension","inspection","repair","other:Замена свечей"]
+        """
 
     #expect(try encodedString(allTypes) == expected)
 }

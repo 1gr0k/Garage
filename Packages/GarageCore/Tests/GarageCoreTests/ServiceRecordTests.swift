@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import GarageCore
 
 private func makeRecord(parts: [Part]) throws -> ServiceRecord {
@@ -45,7 +46,7 @@ private func makeRecord(parts: [Part]) throws -> ServiceRecord {
 
 @Test func recordRoundTripsThroughJSON() throws {
     var record = try makeRecord(parts: [
-        Part(name: "Масляный фильтр", partNumber: "90915-YZZD4", unitPrice: Money(rubles: 1_200)),
+        Part(name: "Масляный фильтр", partNumber: "90915-YZZD4", unitPrice: Money(rubles: 1_200))
     ])
     record.serviceType = .other("Замена свечей")
 

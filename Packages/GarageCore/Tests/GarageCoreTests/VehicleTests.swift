@@ -1,4 +1,5 @@
 import Testing
+
 @testable import GarageCore
 
 @Test func displayNameCombinesMakeAndModel() throws {
@@ -35,9 +36,9 @@ import Testing
 
 @Test func decodingVehicleValidatesMileage() {
     let json = """
-    {"id":"6F1C1A52-3B7E-4C55-9C2B-1D2E3F405162","kind":"motorcycle","make":"Honda",\
-    "model":"CB500X","year":2021,"mileageKm":-5}
-    """
+        {"id":"6F1C1A52-3B7E-4C55-9C2B-1D2E3F405162","kind":"motorcycle","make":"Honda",\
+        "model":"CB500X","year":2021,"mileageKm":-5}
+        """
 
     #expect(throws: ValidationError.negativeMileage(-5)) {
         try decode(Vehicle.self, from: json)
