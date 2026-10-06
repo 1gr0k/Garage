@@ -52,6 +52,9 @@ This is the new Xcode 27 JSON-based project format (JSON with trailing commas), 
 - `GarageCore` must build on Linux: Foundation is allowed; UIKit, SwiftUI, AppKit, Combine and other Apple-only frameworks are not.
 - SwiftData only in `GarageStorage`.
 - Never create or edit `project.pbxproj`; this project uses `project.xcproj` only.
+- Edit files with the Edit tool or `python3`, not `sed -i`: macOS ships BSD sed, where `sed -i` needs a backup-suffix argument and `sed -i '1i …'` fails.
+- All new user-facing strings go into `Garage/Localizable.xcstrings` right away with a Russian translation (for counts, plural variations one/few/many/other). User data (e.g. `.other(text)`) must not reach the catalog: use `Text(verbatim:)` / `String`.
+- macOS: do not use `sed -i` (BSD syntax differs) and do not shell out to python for edits — use the Edit tool.
 
 ## Definition of done
 
@@ -59,3 +62,15 @@ This is the new Xcode 27 JSON-based project format (JSON with trailing commas), 
 2. `xcodebuild test` for GarageStorage passes (see Commands; destination from `CLAUDE.local.md`).
 3. The app builds with the `xcodebuild … build` command above.
 4. If `project.xcproj` changed: `xcprojformatter --update` was run and `git diff` of it is minimal.
+5. The catalog is fully translated: this command prints nothing (it lists keys that are stale, lack `ru`, have a `ru` state other than `translated`, or have a `ru` plural missing one/few/many/other):
+   ```sh
+   jq -r '.strings | to_entries[]
+     | select(.value.shouldTranslate != false)
+     | .key as $k | .value as $v | $v.localizations.ru as $ru
+     | select($v.extractionState == "stale"
+         or $ru == null
+         or ([$ru | .. | .state? // empty] | any(. != "translated"))
+         or ($ru.variations.plural != null
+             and ([$ru.variations.plural | has("one","few","many","other")] | all | not)))
+     | $k' Garage/Localizable.xcstrings
+   ```

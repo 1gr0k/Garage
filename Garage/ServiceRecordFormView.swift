@@ -77,7 +77,7 @@ struct ServiceRecordFormView: View {
         guard let value = Int(draft.mileageText.filter { !$0.isWhitespace }), value > currentMileageKm else {
             return nil
         }
-        return String(localized: "Vehicle mileage will be \(value.formatted()) km")
+        return String(localized: "Vehicle mileage will be \(value.kilometers)")
     }
 
     private var partsSection: some View {

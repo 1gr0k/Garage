@@ -68,3 +68,16 @@ xcodebuild -project Garage.xcodeproj -scheme Garage \
 ## Два локальных пакета с зависимостью между ними
 
 `Packages/GarageStorage` зависит от `Packages/GarageCore` через `.package(path: "../GarageCore")`, а приложение линкует оба. Проверено: в `packages` проекта перечислены оба пакета, в `package-product-members` таргета — оба продукта; `xcodebuild -list` показывает оба в Resolved source packages (`@ local`), сборка проходит. Запись `GarageCore` остаётся, потому что приложение импортирует его напрямую. Вариант без неё не проверялся.
+
+## Локализации
+
+```jsonc
+"localizations": { "development": "en", "supported": ["Base", "ru"] },
+```
+
+- `en` в `supported` добавлять не нужно: `development: "en"` уже делает английский языком разработки. Проверено на сборке: в `Garage.app` появляются `en.lproj` и `ru.lproj`, хотя в `supported` только `Base` и `ru`.
+- Что попадает в бандл из `Garage/Localizable.xcstrings` (папка синхронизируемая, файл подхватывается сам):
+  - `ru.lproj/Localizable.strings` и `ru.lproj/Localizable.stringsdict` (плюралы one/few/many/other);
+  - `en.lproj/Localizable.stringsdict` — только для ключей с английскими plural variations. Обычные английские строки отдельным файлом не хранятся: ключ и есть английский текст.
+- `LOCALIZATION_PREFERS_STRING_CATALOGS = YES` уже стоял в build settings.
+- Извлечение ключей: `xcrun xcstringstool sync Garage/Localizable.xcstrings --stringsdata <DerivedData/…/Objects-normal/arm64/*.stringsdata>`. Файл `.xcstrings` должен существовать (хотя бы `{"sourceLanguage":"en","strings":{},"version":"1.0"}`), иначе sync пропускается с предупреждением.

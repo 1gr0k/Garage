@@ -5,6 +5,23 @@ public enum ServiceTypeChoice: Hashable, Sendable, CaseIterable {
     case oilChange, filters, tires, brakes, chain, suspension, inspection, repair, other
 }
 
+extension ServiceTypeChoice {
+    /// The form option for a service type; `.other(_)` drops its text.
+    public init(_ type: ServiceType) {
+        switch type {
+        case .oilChange: self = .oilChange
+        case .filters: self = .filters
+        case .tires: self = .tires
+        case .brakes: self = .brakes
+        case .chain: self = .chain
+        case .suspension: self = .suspension
+        case .inspection: self = .inspection
+        case .repair: self = .repair
+        case .other: self = .other
+        }
+    }
+}
+
 /// Editable state of one part row in the service record form. All numbers are raw text.
 public struct PartDraft: Identifiable, Hashable, Sendable {
     public var id: UUID

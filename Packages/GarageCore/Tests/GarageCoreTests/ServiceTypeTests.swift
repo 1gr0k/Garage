@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 
 @testable import GarageCore
@@ -47,4 +48,13 @@ private let allStorageStrings = [
     #expect(throws: ValidationError.unknownServiceType("tuning")) {
         try ServiceType(storageString: "tuning")
     }
+}
+
+@Test func choiceFromServiceTypeRoundTripsThroughDraft() throws {
+    for type in allTypes where type != .other("Замена свечей") {
+        let choice = ServiceTypeChoice(type)
+        let draft = ServiceRecordDraft(mileageText: "1", serviceTypeChoice: choice)
+        #expect(try draft.makeRecord(vehicleID: UUID()).serviceType == type)
+    }
+    #expect(ServiceTypeChoice(.other("x")) == .other)
 }

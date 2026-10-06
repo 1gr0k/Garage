@@ -11,10 +11,10 @@ struct ContentView: View {
     @Query(sort: [SortDescriptor(\VehicleEntity.make), SortDescriptor(\VehicleEntity.model)])
     private var entities: [VehicleEntity]
 
-    private var vehicles: [Vehicle] {
+    private var vehicles: [(vehicle: Vehicle, recordCount: Int)] {
         entities.compactMap { entity in
             do {
-                return try entity.toDomain()
+                return (try entity.toDomain(), entity.serviceRecords.count)
             } catch {
                 logger.error("Skipping invalid vehicle \(entity.id, privacy: .public): \(error)")
                 return nil
@@ -24,14 +24,18 @@ struct ContentView: View {
 
     var body: some View {
         NavigationStack {
-            List(vehicles) { vehicle in
+            List(vehicles, id: \.vehicle.id) { vehicle, recordCount in
                 NavigationLink(value: vehicle.id) {
                     VStack(alignment: .leading) {
                         Text(vehicle.displayName)
                             .font(.headline)
-                        Text(String(vehicle.year))
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                        HStack(spacing: 0) {
+                            Text(verbatim: "\(String(vehicle.year)) · ")
+                            Text("\(recordCount) records")
+                        }
+                        .accessibilityElement(children: .combine)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                     }
                 }
             }

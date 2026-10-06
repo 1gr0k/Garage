@@ -8,18 +8,20 @@ extension Money {
 }
 
 extension ServiceType {
-    var title: LocalizedStringResource {
-        switch self {
-        case .oilChange: "Oil change"
-        case .filters: "Filters"
-        case .tires: "Tires"
-        case .brakes: "Brakes"
-        case .chain: "Chain"
-        case .suspension: "Suspension"
-        case .inspection: "Inspection"
-        case .repair: "Repair"
-        case .other(let text): "\(text)"
-        }
+    /// Display name. User-entered text for `.other` is returned as is, without a catalog lookup.
+    var title: String {
+        if case .other(let text) = self { return text }
+        return String(localized: ServiceTypeChoice(self).title)
+    }
+}
+
+extension Int {
+    /// Distance in kilometers formatted for the current locale ("87,400 km" / "87 400 км").
+    var kilometers: String {
+        Measurement(value: Double(self), unit: UnitLength.kilometers).formatted(
+            .measurement(
+                width: .abbreviated, usage: .asProvided,
+                numberFormatStyle: .number.precision(.fractionLength(0))))
     }
 }
 

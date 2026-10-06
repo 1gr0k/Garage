@@ -40,7 +40,7 @@ struct VehicleDetailView: View {
         let mileage = vehicle.currentMileageKm(records: records)
         return List {
             Section {
-                LabeledContent("Mileage", value: "\(mileage.formatted()) km")
+                LabeledContent("Mileage", value: mileage.kilometers)
                 LabeledContent("Total spent", value: records.totalCost.formatted)
             }
             Section("Service History") {
@@ -79,9 +79,14 @@ private struct ServiceRecordRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(record.serviceType.title)
                     .font(.headline)
-                Text("\(record.date.formatted(date: .abbreviated, time: .omitted)) · \(record.mileageKm.formatted()) km")
+                Text(verbatim: "\(record.date.formatted(date: .abbreviated, time: .omitted)) · \(record.mileageKm.kilometers)")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                if !record.parts.isEmpty {
+                    Text("\(record.parts.count) parts")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
             }
             Spacer()
             if hasReceipt {
