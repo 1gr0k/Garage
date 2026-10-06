@@ -19,6 +19,7 @@ project_dir=$(dirname "$file_path")
 
 if ! output=$("$DEVELOPER_DIR/usr/bin/xcprojformatter" --update "$project_dir" 2>&1); then
     echo "xcprojformatter --update failed for $project_dir:" >&2
-    echo "$output" >&2
+    # Drop the usage text that follows the "-----" separator.
+    awk '/^-+$/ { exit } NF' <<<"$output" >&2
     exit 2
 fi
