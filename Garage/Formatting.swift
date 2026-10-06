@@ -5,6 +5,11 @@ extension Money {
     var formatted: String {
         (Decimal(kopecks) / 100).formatted(.currency(code: "RUB"))
     }
+
+    /// Like `formatted`, without kopecks ("10 000 000 ₽").
+    nonisolated var formattedWhole: String {
+        (Decimal(kopecks) / 100).formatted(.currency(code: "RUB").precision(.fractionLength(0)))
+    }
 }
 
 extension ServiceType {
@@ -17,7 +22,7 @@ extension ServiceType {
 
 extension Int {
     /// Distance in kilometers formatted for the current locale ("87,400 km" / "87 400 км").
-    var kilometers: String {
+    nonisolated var kilometers: String {
         Measurement(value: Double(self), unit: UnitLength.kilometers).formatted(
             .measurement(
                 width: .abbreviated, usage: .asProvided,
@@ -56,11 +61,12 @@ extension ValidationError {
         switch self {
         case .negativeMileage: "Mileage can't be negative"
         case .nonPositiveQuantity: "Quantity must be at least 1"
-        case .quantityTooLarge: "Quantity can't exceed 9999"
+        case .mileageTooLarge: "Mileage can't exceed \(ServiceRecord.maxMileageKm.kilometers)"
+        case .quantityTooLarge: "Quantity can't exceed \(Part.maxQuantity)"
         case .unknownServiceType: "Unknown service type"
         case .emptyPartName: "Required"
         case .negativeAmount: "Amount can't be negative"
-        case .amountTooLarge: "Amount can't exceed 10 000 000 ₽"
+        case .amountTooLarge: "Amount can't exceed \(Money.maxAmount.formattedWhole)"
         case .emptyServiceTypeDescription: "Required"
         case .invalidAmount: "Enter a valid amount"
         }

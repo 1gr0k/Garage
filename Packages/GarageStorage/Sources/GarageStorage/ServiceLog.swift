@@ -2,38 +2,45 @@ import Foundation
 import GarageCore
 import SwiftData
 
+public enum ServiceLogError: Error, Hashable, Sendable {
+    case vehicleNotFound(Vehicle.ID)
+}
+
 public enum ServiceLog {
-    /// Inserts the record (with an optional receipt photo) and saves.
+    /// Inserts the record (with an optional receipt photo) for the vehicle and saves.
+    ///
+    /// The work happens in a fresh `ModelContext` of `container`, so a failed save is simply
+    /// discarded with that context and never touches unsaved changes in the caller's context.
+    /// After a successful save, other contexts of the container see the new record.
     ///
     /// The vehicle's own `mileageKm` is left alone: the current mileage is derived from the records.
-    /// If saving fails, the context is rolled back so the record doesn't linger in it.
-    @discardableResult
     public static func add(
         _ record: ServiceRecord,
         receiptImage: Data? = nil,
-        to vehicle: VehicleEntity,
-        in context: ModelContext
-    ) throws -> ServiceRecordEntity {
-        try add(record, receiptImage: receiptImage, to: vehicle, in: context) { try $0.save() }
+        toVehicleWithID vehicleID: Vehicle.ID,
+        in container: ModelContainer
+    ) throws {
+        try add(record, receiptImage: receiptImage, toVehicleWithID: vehicleID, in: container) { try $0.save() }
     }
 
     /// `add` with an injectable save step, so tests can simulate a failing save.
     static func add(
         _ record: ServiceRecord,
         receiptImage: Data?,
-        to vehicle: VehicleEntity,
-        in context: ModelContext,
+        toVehicleWithID vehicleID: Vehicle.ID,
+        in container: ModelContainer,
         save: (ModelContext) throws -> Void
-    ) throws -> ServiceRecordEntity {
+    ) throws {
+        let context = ModelContext(container)
+        context.autosaveEnabled = false
+        var descriptor = FetchDescriptor<VehicleEntity>(predicate: #Predicate { $0.id == vehicleID })
+        descriptor.fetchLimit = 1
+        guard let vehicle = try context.fetch(descriptor).first else {
+            throw ServiceLogError.vehicleNotFound(vehicleID)
+        }
         let entity = try ServiceRecordEntity(record, vehicle: vehicle)
         entity.setReceiptImage(receiptImage)
         context.insert(entity)
-        do {
-            try save(context)
-        } catch {
-            context.rollback()
-            throw error
-        }
-        return entity
+        try save(context)
     }
 }

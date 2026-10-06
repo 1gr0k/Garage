@@ -135,10 +135,23 @@ public struct ServiceRecordDraft: Hashable, Sendable {
     /// Parses a mileage in kilometers. All whitespace (including U+00A0 and U+202F) is ignored,
     /// so `"87 400"` is 87400.
     public static func parseMileage(_ text: String) -> Result<Int, FieldError> {
+        switch parseInteger(text) {
+        case .failure(let error): return .failure(error)
+        case .success(let value):
+            do {
+                try ServiceRecord.validate(mileageKm: value)
+                return .success(value)
+            } catch {
+                return .failure(.invalid(error))
+            }
+        }
+    }
+
+    /// Parses a whole number, ignoring all whitespace (including U+00A0 and U+202F).
+    private static func parseInteger(_ text: String) -> Result<Int, FieldError> {
         let compact = text.filter { !$0.isWhitespace }
         guard !compact.isEmpty else { return .failure(.required) }
         guard let value = Int(compact) else { return .failure(.notANumber) }
-        guard value >= 0 else { return .failure(.invalid(.negativeMileage(value))) }
         return .success(value)
     }
 
@@ -182,18 +195,16 @@ public struct ServiceRecordDraft: Hashable, Sendable {
         }
 
         var quantity = 1
-        let quantityText = draft.quantityText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if quantityText.isEmpty {
-            errors[.partQuantity(draft.id)] = .required
-        } else if let value = Int(quantityText) {
+        switch Self.parseInteger(draft.quantityText) {
+        case .failure(let error):
+            errors[.partQuantity(draft.id)] = error
+        case .success(let value):
             quantity = value
             if value <= 0 {
                 errors[.partQuantity(draft.id)] = .invalid(.nonPositiveQuantity(value))
             } else if value > Part.maxQuantity {
                 errors[.partQuantity(draft.id)] = .invalid(.quantityTooLarge(value))
             }
-        } else {
-            errors[.partQuantity(draft.id)] = .notANumber
         }
 
         let partNumber = draft.partNumber.trimmingCharacters(in: .whitespacesAndNewlines)

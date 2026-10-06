@@ -14,6 +14,8 @@ public final class ServiceRecordEntity {
     @Attribute(.externalStorage) public private(set) var receiptImage: Data?
     /// Whether a receipt photo is attached; lets lists avoid loading `receiptImage` just to check.
     /// The default lets lightweight migration add the column to existing stores.
+    /// Existing records are not backfilled: the app isn't released yet, so there is no real data.
+    /// Once there is, add a `SchemaMigrationPlan` that sets `hasReceipt = receiptImage != nil`.
     public private(set) var hasReceipt: Bool = false
     @Relationship(deleteRule: .cascade, inverse: \PartEntity.record)
     public var parts: [PartEntity] = []

@@ -136,3 +136,18 @@ func recordRejectsBlankOtherServiceType(text: String) {
     #expect(records.totalCost == Money(rubles: 2_500 + 1_500))
     #expect([ServiceRecord]().totalCost == .zero)
 }
+
+@Test func recordRejectsTooLargeMileage() throws {
+    #expect(throws: ValidationError.mileageTooLarge(ServiceRecord.maxMileageKm + 1)) {
+        try ServiceRecord(
+            vehicleID: UUID(), date: Date(), mileageKm: ServiceRecord.maxMileageKm + 1,
+            serviceType: .repair, laborCost: .zero)
+    }
+    var record = try ServiceRecord(
+        vehicleID: UUID(), date: Date(), mileageKm: ServiceRecord.maxMileageKm,
+        serviceType: .repair, laborCost: .zero)
+    #expect(throws: ValidationError.mileageTooLarge(Int.max)) {
+        try record.updateMileage(Int.max)
+    }
+    #expect(record.mileageKm == ServiceRecord.maxMileageKm)
+}

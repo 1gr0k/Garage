@@ -40,18 +40,23 @@ private func properties(of data: Data) throws -> [CFString: Any] {
     return try #require(CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any])
 }
 
+private func makeStore(vehicles: [Vehicle]) throws -> (ModelContainer, ModelContext, [VehicleEntity]) {
+    let container = try GarageStore.makeContainer(inMemory: true)
+    let context = ModelContext(container)
+    let entities = vehicles.map(VehicleEntity.init)
+    entities.forEach(context.insert)
+    try context.save()
+    return (container, context, entities)
+}
+
 @Test func descriptorFiltersByVehicleAndSortsNewestFirst() throws {
-    let context = ModelContext(try GarageStore.makeContainer(inMemory: true))
     let car = Vehicle.samples[0]
     let bike = Vehicle.samples[2]
-    let carEntity = VehicleEntity(car)
-    let bikeEntity = VehicleEntity(bike)
-    context.insert(carEntity)
-    context.insert(bikeEntity)
-    try ServiceLog.add(makeRecord(for: car, date: 100, mileageKm: 10), to: carEntity, in: context)
-    try ServiceLog.add(makeRecord(for: car, date: 300, mileageKm: 20), to: carEntity, in: context)
-    try ServiceLog.add(makeRecord(for: car, date: 300, mileageKm: 30), to: carEntity, in: context)
-    try ServiceLog.add(makeRecord(for: bike, date: 200, mileageKm: 99), to: bikeEntity, in: context)
+    let (container, context, _) = try makeStore(vehicles: [car, bike])
+    try ServiceLog.add(makeRecord(for: car, date: 100, mileageKm: 10), toVehicleWithID: car.id, in: container)
+    try ServiceLog.add(makeRecord(for: car, date: 300, mileageKm: 20), toVehicleWithID: car.id, in: container)
+    try ServiceLog.add(makeRecord(for: car, date: 300, mileageKm: 30), toVehicleWithID: car.id, in: container)
+    try ServiceLog.add(makeRecord(for: bike, date: 200, mileageKm: 99), toVehicleWithID: bike.id, in: container)
 
     let fetched = try context.fetch(ServiceRecordEntity.descriptor(forVehicle: car.id))
 
@@ -59,52 +64,58 @@ private func properties(of data: Data) throws -> [CFString: Any] {
 }
 
 @Test func addStoresReceiptAndKeepsVehicleMileage() throws {
-    let context = ModelContext(try GarageStore.makeContainer(inMemory: true))
     let car = Vehicle.samples[0]
-    let entity = VehicleEntity(car)
-    context.insert(entity)
+    let (container, context, entities) = try makeStore(vehicles: [car])
     let photo = Data([1, 2, 3, 4])
 
     try ServiceLog.add(
         makeRecord(for: car, date: 100, mileageKm: car.mileageKm + 5_000),
-        receiptImage: photo, to: entity, in: context)
+        receiptImage: photo, toVehicleWithID: car.id, in: container)
 
     let stored = try #require(try context.fetch(ServiceRecordEntity.descriptor(forVehicle: car.id)).first)
     #expect(stored.receiptImage == photo)
     #expect(stored.hasReceipt)
-    #expect(entity.mileageKm == car.mileageKm)
+    #expect(entities[0].mileageKm == car.mileageKm)
 }
 
 private struct SaveFailure: Error {}
 
-@Test func failedSaveRollsBackTheInsertedRecord() throws {
-    let context = ModelContext(try GarageStore.makeContainer(inMemory: true))
+@Test func failedSaveLeavesCallerContextUntouched() throws {
     let car = Vehicle.samples[0]
-    let entity = VehicleEntity(car)
-    context.insert(entity)
-    try context.save()
+    let (container, context, entities) = try makeStore(vehicles: [car])
+    entities[0].model = "Unsaved edit"
+    #expect(context.hasChanges)
 
     #expect(throws: SaveFailure.self) {
         try ServiceLog.add(
-            makeRecord(for: car, date: 1, mileageKm: 1), receiptImage: nil, to: entity, in: context
+            makeRecord(for: car, date: 1, mileageKm: 1), receiptImage: nil, toVehicleWithID: car.id, in: container
         ) { _ in throw SaveFailure() }
     }
 
-    #expect(entity.serviceRecords.isEmpty)
-    #expect(try context.fetch(ServiceRecordEntity.descriptor(forVehicle: car.id)).isEmpty)
-    #expect(!context.hasChanges)
+    #expect(entities[0].model == "Unsaved edit")
+    #expect(context.hasChanges)
+    #expect(entities[0].serviceRecords.isEmpty)
+    #expect(try ModelContext(container).fetch(ServiceRecordEntity.descriptor(forVehicle: car.id)).isEmpty)
 }
 
 @Test func addWithoutReceiptLeavesImageNil() throws {
-    let context = ModelContext(try GarageStore.makeContainer(inMemory: true))
     let car = Vehicle.samples[0]
-    let entity = VehicleEntity(car)
-    context.insert(entity)
+    let (container, context, _) = try makeStore(vehicles: [car])
 
-    let stored = try ServiceLog.add(makeRecord(for: car, date: 1, mileageKm: 1), to: entity, in: context)
+    try ServiceLog.add(makeRecord(for: car, date: 1, mileageKm: 1), toVehicleWithID: car.id, in: container)
 
+    let stored = try #require(try context.fetch(ServiceRecordEntity.descriptor(forVehicle: car.id)).first)
     #expect(stored.receiptImage == nil)
     #expect(!stored.hasReceipt)
+}
+
+@Test func addToUnknownVehicleThrows() throws {
+    let car = Vehicle.samples[0]
+    let (container, _, _) = try makeStore(vehicles: [])
+
+    #expect(throws: ServiceLogError.vehicleNotFound(car.id)) {
+        try ServiceLog.add(makeRecord(for: car, date: 1, mileageKm: 1), toVehicleWithID: car.id, in: container)
+    }
 }
 
 @Test func prepareDownscalesLargePhotoToJPEG() throws {

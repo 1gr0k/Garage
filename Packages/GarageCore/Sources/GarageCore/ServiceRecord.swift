@@ -13,6 +13,9 @@ public struct ServiceRecord: Identifiable, Hashable, Sendable, Codable {
     public var notes: String
     public var parts: [Part]
 
+    /// The largest odometer reading a record accepts, in kilometres.
+    public static let maxMileageKm = 10_000_000
+
     public init(
         id: UUID = UUID(),
         vehicleID: Vehicle.ID,
@@ -23,7 +26,7 @@ public struct ServiceRecord: Identifiable, Hashable, Sendable, Codable {
         notes: String = "",
         parts: [Part] = []
     ) throws(ValidationError) {
-        guard mileageKm >= 0 else { throw .negativeMileage(mileageKm) }
+        try Self.validate(mileageKm: mileageKm)
         try Self.validate(serviceType: serviceType)
         try Self.validate(laborCost: laborCost)
         self.id = id
@@ -38,7 +41,7 @@ public struct ServiceRecord: Identifiable, Hashable, Sendable, Codable {
 
     /// Sets a new odometer reading, enforcing the same invariant as `init`.
     public mutating func updateMileage(_ mileageKm: Int) throws(ValidationError) {
-        guard mileageKm >= 0 else { throw .negativeMileage(mileageKm) }
+        try Self.validate(mileageKm: mileageKm)
         self.mileageKm = mileageKm
     }
 
@@ -52,6 +55,12 @@ public struct ServiceRecord: Identifiable, Hashable, Sendable, Codable {
     public mutating func updateLaborCost(_ laborCost: Money) throws(ValidationError) {
         try Self.validate(laborCost: laborCost)
         self.laborCost = laborCost
+    }
+
+    /// Checks the odometer range; `ServiceRecordDraft` reuses it so the form and the model agree.
+    static func validate(mileageKm: Int) throws(ValidationError) {
+        guard mileageKm >= 0 else { throw .negativeMileage(mileageKm) }
+        guard mileageKm <= maxMileageKm else { throw .mileageTooLarge(mileageKm) }
     }
 
     private static func validate(serviceType: ServiceType) throws(ValidationError) {

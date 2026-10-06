@@ -138,3 +138,21 @@ func mileageParsingIgnoresAllWhitespace(text: String) throws {
         #expect(try draft.makeRecord(vehicleID: UUID()).serviceType == expected[choice])
     }
 }
+
+@Test(arguments: ["10000000", "10 000 000"])
+func draftAcceptsMaximumMileage(text: String) {
+    #expect(fieldErrors(ServiceRecordDraft(mileageText: text)) == [:])
+}
+
+@Test(arguments: [("10000001", 10_000_001), ("9223372036854775807", Int.max)])
+func draftRejectsTooLargeMileage(text: String, value: Int) {
+    #expect(fieldErrors(ServiceRecordDraft(mileageText: text)) == [.mileage: .invalid(.mileageTooLarge(value))])
+}
+
+@Test(arguments: ["1 ", "\u{00A0}1\u{00A0}", "1\u{202F}", "1 000"])
+func partQuantityIgnoresAllWhitespace(text: String) {
+    let part = PartDraft(name: "Болт", unitPriceText: "1", quantityText: text)
+    let draft = ServiceRecordDraft(mileageText: "1000", parts: [part])
+
+    #expect(fieldErrors(draft) == [:])
+}

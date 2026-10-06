@@ -76,7 +76,8 @@ struct ServiceRecordFormView: View {
     private var isPhotoPending: Bool { photoItem != nil && receipt == nil }
 
     private var mileageHint: String? {
-        guard case .success(let value) = ServiceRecordDraft.parseMileage(draft.mileageText), value > currentMileageKm else {
+        guard case .success(let value) = ServiceRecordDraft.parseMileage(draft.mileageText), value > currentMileageKm
+        else {
             return nil
         }
         return String(localized: "Vehicle mileage will be \(value.kilometers)")
@@ -180,7 +181,7 @@ struct ServiceRecordFormView: View {
     private func save() {
         do {
             let record = try draft.makeRecord(vehicleID: vehicle.id)
-            try ServiceLog.add(record, receiptImage: receipt, to: vehicle, in: modelContext)
+            try ServiceLog.add(record, receiptImage: receipt, toVehicleWithID: vehicle.id, in: modelContext.container)
             dismiss()
         } catch let failure as ServiceRecordDraft.Errors {
             errors = failure.fields
