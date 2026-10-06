@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xcodebuild *)", "Bash(swift build*)", "Bash(swift test*)",
+      "Bash(*/xcprojformatter *)", "Bash(xcprojformatter *)",
+      "Bash(git status*)", "Bash(git diff*)", "Bash(git log*)",
+      "Bash(mkdir -p docs/*)"
+    ],
+    "deny": ["Bash(git push*)", "Edit(**/project.pbxproj)", "Write(**/project.pbxproj)"]
+  }
+}
