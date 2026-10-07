@@ -54,6 +54,19 @@ struct ServiceRecordFormViewModelTests {
         #expect(added.first?.receipt == Data([1, 2, 3]))
     }
 
+    @Test func saveDropsErrorsOfFieldsThatAreNoLongerChecked() async {
+        let model = makeModel()
+        model.draft.serviceTypeChoice = .other
+        _ = await model.save()
+        #expect(model.errors[.otherServiceType] != nil)
+
+        model.draft.serviceTypeChoice = .oilChange
+        _ = await model.save()
+
+        #expect(model.errors[.otherServiceType] == nil)
+        #expect(model.errors[.mileage] != nil)
+    }
+
     @Test func repositoryFailureSetsSaveFailed() async {
         let repository = FakeRecordRepository()
         await repository.failWith(TestFailure())

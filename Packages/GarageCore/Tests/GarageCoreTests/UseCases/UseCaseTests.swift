@@ -166,3 +166,12 @@ func registerAcceptsAllowedURLsAndStoresCredentials(text: String) async throws {
 
     #expect(credentials.readToken() == "t")
 }
+
+@Test func forgetDeviceMapsTokenDeletionErrorToKeychain() async {
+    let credentials = FakeCredentials(token: "t", serverURL: URL(string: "https://example.com"))
+    credentials.deleteTokenError = TestFailure()
+
+    await #expect(throws: SyncFailure.keychain) {
+        try await ForgetDevice(service: FakeSyncService(), credentials: credentials).execute()
+    }
+}

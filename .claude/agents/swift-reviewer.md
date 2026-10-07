@@ -12,6 +12,7 @@ Focus on what tests and manual runs miss:
 - SwiftData: save/rollback on failure, autosave side effects, faults on large attributes.
 - Domain invariants and input that can crash (overflow, force unwraps).
 - Single source of truth: the same logic implemented twice.
+- Layer boundaries (docs/architecture.md; `scripts/check.sh --only architecture` catches only the grep-able part): @Query/modelContext in a view beyond read-only display; logic in a view; a ViewModel that knows about SwiftData/GarageStorage/GarageSync; a use case or port protocol outside GarageCore; a non-Foundation import in GarageCore; unstructured `Task` in a view for work that must be cancelled or outlive the view; adapters or use cases created outside the composition root (`Garage/App/AppDependencies.swift`); a use case with no rule or orchestration (the ViewModel should depend on the port directly).
 - Compliance with CLAUDE.md rules.
 
 When reviewing an older commit, check every finding against HEAD and drop those already fixed.

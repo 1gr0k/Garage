@@ -61,9 +61,7 @@ public struct SyncNow: Sendable {
 
     /// - Throws: `SyncFailure` (или `CancellationError`).
     public func execute() async throws -> SyncSummary {
-        guard credentials.readToken() != nil, credentials.readServerURL() != nil else {
-            throw SyncFailure.notRegistered
-        }
+        guard credentials.isRegistered else { throw SyncFailure.notRegistered }
         do {
             return try await service.sync()
         } catch let failure as SyncFailure {
@@ -89,6 +87,11 @@ public struct ForgetDevice: Sendable {
     public func execute() async throws {
         // Сначала сброс: если он упадёт, устройство остаётся зарегистрированным и «Забыть» можно повторить.
         try await service.resetSyncState()
-        credentials.deleteToken()
+        do {
+            try credentials.deleteToken()
+        } catch {
+            // Токен остался: после перезапуска устройство снова считалось бы зарегистрированным.
+            throw SyncFailure.keychain
+        }
     }
 }

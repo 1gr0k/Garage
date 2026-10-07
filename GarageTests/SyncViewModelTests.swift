@@ -163,6 +163,42 @@ struct SyncViewModelTests {
         #expect(model.lastFailure == nil)
     }
 
+    @Test(.timeLimit(.minutes(1)))
+    func syncCannotStartWhileForgetting() async {
+        let service = FakeSyncService()
+        let gate = Gate()
+        await service.holdReset(at: gate)
+        let model = makeModel(service: service, credentials: registeredCredentials())
+
+        let forget = Task { await model.forgetDevice() }
+        await gate.waitForArrival()
+        #expect(model.isForgetting)
+        model.startSync()
+        #expect(!model.isSyncing)
+        await gate.open()
+        await forget.value
+
+        #expect(await service.syncCount == 0)
+        #expect(!model.isForgetting)
+        #expect(!model.isRegistered)
+        #expect(model.lastSyncAt == nil)
+    }
+
+    @Test func notRegisteredFromServiceClearsOldError() async {
+        let service = FakeSyncService()
+        let credentials = registeredCredentials()
+        let model = makeModel(service: service, credentials: credentials)
+        await service.fail(with: SyncFailure.network)
+        await model.sync()
+        #expect(model.lastFailure == .network)
+
+        await service.fail(with: SyncFailure.notRegistered)
+        await model.sync()
+
+        #expect(!model.isRegistered)
+        #expect(model.lastFailure == nil)
+    }
+
     @Test func forgetFailureKeepsDeviceRegistered() async {
         let service = FailingResetService()
         let credentials = registeredCredentials()

@@ -21,6 +21,7 @@ final class FakeCredentials: SyncCredentialsStore, @unchecked Sendable {
     private var token: String?
     private var url: URL?
     var saveTokenError: (any Error)?
+    var deleteTokenError: (any Error)?
     /// Всё, что было записано как токен или адрес; нужно, чтобы проверить, что секрет не сохраняется.
     private var _written: [String] = []
 
@@ -39,7 +40,10 @@ final class FakeCredentials: SyncCredentialsStore, @unchecked Sendable {
             _written.append(token)
         }
     }
-    func deleteToken() { lock.withLock { token = nil } }
+    func deleteToken() throws {
+        if let deleteTokenError { throw deleteTokenError }
+        lock.withLock { token = nil }
+    }
     func readServerURL() -> URL? { lock.withLock { url } }
     func saveServerURL(_ url: URL) {
         lock.withLock {

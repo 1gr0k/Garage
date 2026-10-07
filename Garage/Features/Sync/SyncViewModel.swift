@@ -8,6 +8,8 @@ final class SyncViewModel {
     private(set) var isRegistered: Bool
     private(set) var isRegistering = false
     private(set) var isSyncing = false
+    /// Пока идёт «Забыть устройство», новая синхронизация не запускается: она записала бы курсор поверх сброса.
+    private(set) var isForgetting = false
     private(set) var lastSyncAt: Date?
     private(set) var lastFailure: SyncFailure?
     private(set) var pendingCount = 0
@@ -34,7 +36,7 @@ final class SyncViewModel {
         self.forgetDeviceUseCase = forgetDevice
         self.credentials = credentials
         self.deviceName = deviceName
-        isRegistered = credentials.readToken() != nil && credentials.readServerURL() != nil
+        isRegistered = credentials.isRegistered
     }
 
     var serverURL: URL? { credentials.readServerURL() }
@@ -70,7 +72,7 @@ final class SyncViewModel {
 
     /// Запускает синхронизацию в задаче, которой владеет модель: «Забыть устройство» может её отменить.
     func startSync() {
-        guard isRegistered, syncTask == nil else { return }
+        guard isRegistered, !isForgetting, syncTask == nil else { return }
         isSyncing = true
         let generation = generation
         syncTask = Task { await performSync(generation: generation) }
@@ -84,6 +86,9 @@ final class SyncViewModel {
 
     /// Останавливает идущую синхронизацию, затем сбрасывает состояние; адрес сервера остаётся.
     func forgetDevice() async {
+        guard !isForgetting else { return }
+        isForgetting = true
+        defer { isForgetting = false }
         generation += 1
         let running = syncTask
         running?.cancel()
@@ -122,6 +127,7 @@ final class SyncViewModel {
             let failure = Self.failure(from: error)
             if failure == .notRegistered {
                 isRegistered = false
+                lastFailure = nil
                 return
             }
             lastFailure = failure

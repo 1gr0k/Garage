@@ -82,6 +82,8 @@ final class ServiceRecordFormViewModel {
         guard !isSaving else { return false }
         isSaving = true
         defer { isSaving = false }
+        // Ошибки прошлой попытки (в том числе скрытых теперь полей) заменяются результатом этой проверки.
+        errors = [:]
         do {
             try await addServiceRecord.execute(draft: draft, vehicleID: vehicleID, receipt: receipt)
             return true

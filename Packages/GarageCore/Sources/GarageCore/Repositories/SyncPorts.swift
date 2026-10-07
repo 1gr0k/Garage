@@ -53,8 +53,14 @@ public protocol DeviceRegistrar: Sendable {
 public protocol SyncCredentialsStore: Sendable {
     func readToken() -> String?
     func saveToken(_ token: String) throws
-    func deleteToken()
+    /// Отсутствие токена — не ошибка.
+    func deleteToken() throws
     func readServerURL() -> URL?
     func saveServerURL(_ url: URL)
     func deleteServerURL()
+}
+
+extension SyncCredentialsStore {
+    /// Устройство зарегистрировано: есть и токен, и адрес сервера.
+    public var isRegistered: Bool { readToken() != nil && readServerURL() != nil }
 }

@@ -49,8 +49,9 @@ nonisolated struct KeychainCredentialsStore: SyncCredentialsStore {
         guard status == errSecSuccess else { throw KeychainError(status: status) }
     }
 
-    func deleteToken() {
-        SecItemDelete(query as CFDictionary)
+    func deleteToken() throws {
+        let status = SecItemDelete(query as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else { throw KeychainError(status: status) }
     }
 
     func readServerURL() -> URL? {

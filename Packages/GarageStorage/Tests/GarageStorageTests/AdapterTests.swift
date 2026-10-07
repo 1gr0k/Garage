@@ -20,7 +20,7 @@ private final class MemoryCredentials: SyncCredentialsStore, @unchecked Sendable
 
     func readToken() -> String? { lock.withLock { token } }
     func saveToken(_ token: String) throws { lock.withLock { self.token = token } }
-    func deleteToken() { lock.withLock { token = nil } }
+    func deleteToken() throws { lock.withLock { token = nil } }
     func readServerURL() -> URL? { lock.withLock { url } }
     func saveServerURL(_ url: URL) { lock.withLock { self.url = url } }
     func deleteServerURL() { lock.withLock { url = nil } }

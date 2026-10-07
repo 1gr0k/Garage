@@ -35,7 +35,9 @@ struct SyncSettingsView: View {
             if sync.isRegistered {
                 Label("Device registered", systemImage: "checkmark.circle")
                 Button("Forget Device", role: .destructive) { isConfirmingForget = true }
-                    .confirmationDialog("Forget this device?", isPresented: $isConfirmingForget) {
+                    .confirmationDialog(
+                        "Forget this device?", isPresented: $isConfirmingForget, titleVisibility: .visible
+                    ) {
                         Button("Forget Device", role: .destructive) {
                             Task { await sync.forgetDevice() }
                         }
@@ -67,7 +69,7 @@ struct SyncSettingsView: View {
                     if sync.isSyncing { ProgressView() }
                 }
             }
-            .disabled(!sync.isRegistered || sync.isSyncing)
+            .disabled(!sync.isRegistered || sync.isSyncing || sync.isForgetting)
             if let lastSyncAt = sync.lastSyncAt {
                 Text("Last sync: \(lastSyncAt.formatted(.relative(presentation: .named)))")
             } else {

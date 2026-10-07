@@ -17,8 +17,15 @@ final class LaunchModel {
         self.bootstrap = bootstrap
     }
 
-    /// Повторный вызов («Повторить») начинает запуск заново.
+    private var isLaunching = false
+
+    /// Запускает один раз: пока идёт запуск или всё готово, повторные вызовы (второе окно на iPad,
+    /// повторный `.task`) ничего не делают. После ошибки вызов («Повторить») начинает заново.
     func launch() async {
+        if case .ready = state { return }
+        guard !isLaunching else { return }
+        isLaunching = true
+        defer { isLaunching = false }
         state = .loading
         do {
             state = .ready(try await bootstrap())

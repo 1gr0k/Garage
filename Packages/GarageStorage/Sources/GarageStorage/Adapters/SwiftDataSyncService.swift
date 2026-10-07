@@ -35,7 +35,7 @@ public actor SwiftDataSyncService: SyncService {
         }
         let task = Task { try await self.performSync() }
         inFlight = task
-        defer { inFlight = nil }
+        defer { if inFlight == task { inFlight = nil } }
         return try await withTaskCancellationHandler {
             try await task.value
         } onCancel: {
@@ -72,9 +72,13 @@ public actor SwiftDataSyncService: SyncService {
 
     public func resetSyncState() async throws {
         // Идущий прогон записал бы курсор и версии поверх сброса: сначала отменяем и дожидаемся его.
-        if let running = inFlight {
+        // Цикл: прогон, начатый, пока мы ждали предыдущий, тоже должен закончиться до сброса.
+        // Уже дождавшийся прогон может ещё висеть в `inFlight` (его `defer` не успел выполниться) — не ждём его снова.
+        var finished: Task<SyncSummary, any Error>?
+        while let running = inFlight, running != finished {
             running.cancel()
             _ = try? await running.value
+            finished = running
         }
         try SyncSupport.resetSyncState(container)
     }
