@@ -46,7 +46,7 @@ public struct PartDraft: Identifiable, Hashable, Sendable {
 }
 
 /// Editable state of the service record form. Fields hold raw user input;
-/// `makeRecord(vehicleID:)` validates it all at once.
+/// `makeRecord(id:vehicleID:)` validates it all at once.
 public struct ServiceRecordDraft: Hashable, Sendable {
     public var date: Date
     public var mileageText: String
@@ -74,6 +74,33 @@ public struct ServiceRecordDraft: Hashable, Sendable {
         self.notes = notes
     }
 
+    /// Черновик для правки существующей записи: обратное отображение `makeRecord`.
+    ///
+    /// - Parameter decimalSeparator: разделитель копеек в `laborCostText` и `unitPriceText`
+    ///   (ViewModel выбирает `.comma`, только если в текущей локали это `,`, иначе `.period`).
+    public init(record: ServiceRecord, decimalSeparator: Money.DecimalSeparator = .period) {
+        var otherText = ""
+        if case .other(let text) = record.serviceType { otherText = text }
+        self.init(
+            date: record.date,
+            mileageText: String(record.mileageKm),
+            serviceTypeChoice: ServiceTypeChoice(record.serviceType),
+            otherServiceTypeText: otherText,
+            laborCostText: record.laborCost == .zero
+                ? "" : record.laborCost.editingText(decimalSeparator: decimalSeparator),
+            parts: record.parts.map {
+                PartDraft(
+                    id: $0.id,
+                    name: $0.name,
+                    partNumber: $0.partNumber ?? "",
+                    unitPriceText: $0.unitPrice.editingText(decimalSeparator: decimalSeparator),
+                    quantityText: String($0.quantity)
+                )
+            },
+            notes: record.notes
+        )
+    }
+
     /// A form field that can carry an error.
     public enum Field: Hashable, Sendable {
         case mileage
@@ -95,7 +122,10 @@ public struct ServiceRecordDraft: Hashable, Sendable {
         public var fields: [Field: FieldError]
     }
 
-    public func makeRecord(vehicleID: Vehicle.ID) throws(Errors) -> ServiceRecord {
+    /// Проверяет черновик целиком и собирает запись.
+    /// - Parameter id: идентификатор записи; при правке передаётся `id` исходной записи,
+    ///   для новой записи каждый вызов создаёт новый `UUID`.
+    public func makeRecord(id: ServiceRecord.ID = UUID(), vehicleID: Vehicle.ID) throws(Errors) -> ServiceRecord {
         var errors: [Field: FieldError] = [:]
 
         let mileage = parseMileage(into: &errors)
@@ -118,6 +148,7 @@ public struct ServiceRecordDraft: Hashable, Sendable {
         }
         do {
             return try ServiceRecord(
+                id: id,
                 vehicleID: vehicleID,
                 date: date,
                 mileageKm: mileage,

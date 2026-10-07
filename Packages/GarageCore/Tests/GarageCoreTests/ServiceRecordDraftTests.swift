@@ -156,3 +156,89 @@ func partQuantityIgnoresAllWhitespace(text: String) {
 
     #expect(fieldErrors(draft) == [:])
 }
+
+// MARK: Черновик из записи
+
+private let sampleDate = Date(timeIntervalSince1970: 1_700_000_000)
+
+private func sampleRecords() throws -> [ServiceRecord] {
+    let vehicleID = Vehicle.SampleID.landCruiser
+    return [
+        try ServiceRecord(
+            vehicleID: vehicleID, date: sampleDate, mileageKm: 87_400, serviceType: .oilChange,
+            laborCost: Money(rubles: 1_250, kopecks: 50), notes: "Масло 5W-30",
+            parts: [
+                try Part(name: "Фильтр", partNumber: "04152-YZZA1", unitPrice: Money(rubles: 700), quantity: 1),
+                try Part(name: "Масло", unitPrice: Money(rubles: 1_999, kopecks: 5), quantity: 6),
+            ]),
+        try ServiceRecord(
+            vehicleID: vehicleID, date: sampleDate, mileageKm: 0, serviceType: .other("Мойка двигателя"),
+            laborCost: .zero),
+        try ServiceRecord(
+            vehicleID: vehicleID, date: sampleDate, mileageKm: 10_000_000, serviceType: .tires,
+            laborCost: Money(kopecks: 1)),
+        try ServiceRecord(
+            vehicleID: vehicleID, date: sampleDate, mileageKm: 500, serviceType: .repair,
+            laborCost: Money(kopecks: 5),
+            parts: [try Part(name: "Прокладка", unitPrice: .zero, quantity: 2)]),
+    ]
+}
+
+@Test func draftFromRecordRoundTrips() throws {
+    for record in try sampleRecords() {
+        let rebuilt = try ServiceRecordDraft(record: record).makeRecord(id: record.id, vehicleID: record.vehicleID)
+        #expect(rebuilt == record)
+    }
+}
+
+@Test(arguments: [(Money.DecimalSeparator.period, "1250.50", "1999.05"), (.comma, "1250,50", "1999,05")])
+func draftFromRecordUsesDecimalSeparator(separator: Money.DecimalSeparator, labor: String, price: String) throws {
+    let record = try sampleRecords()[0]
+    let draft = ServiceRecordDraft(record: record, decimalSeparator: separator)
+
+    #expect(draft.laborCostText == labor)
+    #expect(draft.parts[1].unitPriceText == price)
+    #expect(try draft.makeRecord(id: record.id, vehicleID: record.vehicleID) == record)
+}
+
+@Test(arguments: [(Money.DecimalSeparator.period, "0.05"), (.comma, "0,05")])
+func draftFromRecordKeepsLeadingKopeckZero(separator: Money.DecimalSeparator, expected: String) throws {
+    let record = try sampleRecords()[3]
+    let draft = ServiceRecordDraft(record: record, decimalSeparator: separator)
+
+    #expect(draft.laborCostText == expected)
+    #expect(draft.parts[0].unitPriceText == "0")
+    #expect(try draft.makeRecord(id: record.id, vehicleID: record.vehicleID) == record)
+}
+
+@Test func draftFromRecordFillsFields() throws {
+    let records = try sampleRecords()
+    let draft = ServiceRecordDraft(record: records[0])
+
+    #expect(draft.mileageText == "87400")
+    #expect(draft.serviceTypeChoice == .oilChange)
+    #expect(draft.otherServiceTypeText == "")
+    #expect(draft.notes == "Масло 5W-30")
+    #expect(draft.parts.map(\.id) == records[0].parts.map(\.id))
+    #expect(draft.parts[0].partNumber == "04152-YZZA1")
+    #expect(draft.parts[1].partNumber == "")
+    #expect(draft.parts[1].unitPriceText == "1999.05")
+    #expect(draft.parts[1].quantityText == "6")
+}
+
+@Test func draftFromRecordWithZeroLaborAndOtherType() throws {
+    let draft = ServiceRecordDraft(record: try sampleRecords()[1])
+
+    #expect(draft.laborCostText == "")
+    #expect(draft.serviceTypeChoice == .other)
+    #expect(draft.otherServiceTypeText == "Мойка двигателя")
+}
+
+@Test func makeRecordKeepsGivenIDAndGeneratesNewOtherwise() throws {
+    let draft = ServiceRecordDraft(mileageText: "1000")
+    let vehicleID = UUID()
+    let id = UUID()
+
+    #expect(try draft.makeRecord(id: id, vehicleID: vehicleID).id == id)
+    #expect(try draft.makeRecord(vehicleID: vehicleID).id != draft.makeRecord(vehicleID: vehicleID).id)
+}

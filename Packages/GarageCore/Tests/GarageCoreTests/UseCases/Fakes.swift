@@ -16,6 +16,26 @@ final class FakeRecordRepository: ServiceRecordRepository, @unchecked Sendable {
     }
 }
 
+final class FakeRecordEditor: ServiceRecordEditing, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _updated: [(record: ServiceRecord, receipt: ReceiptChange)] = []
+    private var _deleted: [UUID] = []
+    var error: (any Error)?
+
+    var updated: [(record: ServiceRecord, receipt: ReceiptChange)] { lock.withLock { _updated } }
+    var deleted: [UUID] { lock.withLock { _deleted } }
+
+    func update(_ record: ServiceRecord, receipt: ReceiptChange) async throws {
+        if let error { throw error }
+        lock.withLock { _updated.append((record, receipt)) }
+    }
+
+    func delete(id: ServiceRecord.ID) async throws {
+        if let error { throw error }
+        lock.withLock { _deleted.append(id) }
+    }
+}
+
 final class FakeCredentials: SyncCredentialsStore, @unchecked Sendable {
     private let lock = NSLock()
     private var token: String?

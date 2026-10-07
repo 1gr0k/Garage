@@ -31,6 +31,9 @@ Use case заводится **только если есть правило ил
 
 - `AddServiceRecord` — use case: правило (черновик проверяется `ServiceRecordDraft.makeRecord`, его
   ошибки пробрасываются как есть) + сохранение через `ServiceRecordRepository`.
+- `UpdateServiceRecord` — use case: то же правило для правки (`id` и `vehicleID` берутся из исходной
+  записи) + «ничего не изменилось → порт не вызывается»; сохранение через `ServiceRecordEditing`.
+- `ServiceRecordEditing.delete` — порт без use case: правил у удаления нет, подтверждение — это UI.
 - `RegisterDevice`, `SyncNow`, `ForgetDevice` — use case'ы: проверка адреса (`ServerURLPolicy`),
   «секрет не сохраняется», «нет регистрации → `SyncFailure.notRegistered`», порядок «сброс, потом
   удаление токена».
@@ -101,17 +104,27 @@ ViewModel (`makeServiceRecordFormViewModel(vehicleID:currentMileageKm:)`) и о�
 7. **Composition root** — `AppDependencies.makeServiceRecordFormViewModel`.
 8. **Строки** — сразу в `Garage/Localizable.xcstrings` с `ru`.
 
-## Шаблон: правка и удаление (не реализованы)
+## Шаблон: правка и удаление
 
-- Порт: в `ServiceRecordRepository` добавить `update(_ record:)` и `delete(id:)` (`RepositoryError`
-  для «записи нет»).
-- Use case: `UpdateServiceRecord` — то же правило, что у `AddServiceRecord` (черновик → запись);
-  удаление без правил — ViewModel зовёт `delete` порта напрямую, если не появится правило
-  (например, подтверждение для записей с чеком).
-- Адаптер: правка через `update(from:)` и `SyncQueue.enqueueUpsert`, удаление — `SyncQueue.enqueueDelete`
-  в том же сохранении, что и `context.delete`.
-- ViewModel: форма переиспользует `ServiceRecordFormViewModel` с режимом правки (черновик из
-  существующей записи); удаление — действие в ViewModel экрана деталей.
+План: `docs/plans/stage-9-edit-delete-records.md`. Часть A (GarageCore) реализована, часть B
+(адаптер, ViewModel, вью) — нет.
+
+- Порт: отдельный протокол `ServiceRecordEditing` (`update(_:receipt:)`, `delete(id:)`), а не новые
+  методы `ServiceRecordRepository`: существующие адаптеры и фейки не ломаются. Адаптер реализует оба
+  протокола. Правка отсутствующей записи — `RepositoryError.recordNotFound`; удаление отсутствующей
+  — успех (идемпотентно).
+- Чек: `ReceiptChange` (`keep` / `replace(Data)` / `remove`). `keep` не трогает поля чека, в том числе
+  у записи с ещё не скачанным чеком. ViewModel вычисляет `ReceiptChange` из своего состояния и
+  не хранит флагов вроде «чек удалён».
+- Use case: `UpdateServiceRecord` — то же правило, что у `AddServiceRecord` (черновик → запись),
+  `id` и `vehicleID` берутся из исходной записи; запись и чек не менялись — порт не вызывается.
+  Удаление без правил — ViewModel зовёт `ServiceRecordEditing.delete` напрямую (подтверждение — это UI).
+- Черновик: `ServiceRecordDraft(record:decimalSeparator:)` для формы правки (`Money.DecimalSeparator`:
+  ViewModel выбирает `.comma`, только если в локали `,`, иначе `.period`), `makeRecord(id:vehicleID:)`.
+- Адаптер (B): правка через `update(from:)` и `SyncQueue.enqueueUpsert`, удаление — `SyncQueue.enqueueDelete`
+  в том же сохранении, что и `context.delete`; чек меняется только через `setReceiptImage`.
+- ViewModel (B): форма переиспользует `ServiceRecordFormViewModel` с режимом правки; удаление —
+  действие в ViewModel экрана деталей.
 
 ## Что проверяет `scripts/check.sh --only architecture`
 
