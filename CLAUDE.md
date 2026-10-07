@@ -69,6 +69,9 @@ This is the new Xcode 27 JSON-based project format (JSON with trailing commas), 
 - Never create or edit `project.pbxproj`; this project uses `project.xcproj` only.
 - All new user-facing strings go into `Garage/Localizable.xcstrings` right away with a Russian translation (for counts, plural variations one/few/many/other). User data (e.g. `.other(text)`) must not reach the catalog: use `Text(verbatim:)` / `String`.
 - macOS: do not use `sed -i` (BSD syntax differs) and do not shell out to python for edits — use the Edit tool. There is no `timeout` command on macOS (it fails with "command not found", so the command never runs): wait with a background run or Monitor instead. Debug files and scratch tests go only in the scratchpad directory, never in the repository (and remove any temporary test file you add).
+- Code comments and `///` documentation are written in Russian. Identifiers (types, functions, variables, test functions), log messages and string-catalog keys stay in English. User-facing text goes through the catalog as before. Don't translate existing comments in files you aren't otherwise changing.
+- Bash keeps the working directory between commands: create and edit files by paths from the repository root; use a subshell `(cd … && …)` for commands that must run elsewhere.
+- Create and modify files only with the Write/Edit tools, never via shell redirection (`cat >`, heredoc, `tee`, `echo >`): hooks, /rewind and file permissions apply only to Write/Edit.
 
 ## Definition of done
 
