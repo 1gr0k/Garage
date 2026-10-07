@@ -15,6 +15,8 @@ final class AppDependencies {
     let syncViewModel: SyncViewModel
 
     private let addServiceRecord: AddServiceRecord
+    private let updateServiceRecord: UpdateServiceRecord
+    private let recordEditing: any ServiceRecordEditing
     private let receiptPreparer: any ReceiptImagePreparing
 
     init(
@@ -32,14 +34,33 @@ final class AppDependencies {
             forgetDevice: ForgetDevice(service: service, credentials: credentials),
             credentials: credentials,
             deviceName: deviceName)
-        addServiceRecord = AddServiceRecord(records: SwiftDataServiceRecordRepository(container: container))
+        // Один адаптер реализует оба порта: добавление и правку/удаление.
+        let recordRepository = SwiftDataServiceRecordRepository(container: container)
+        addServiceRecord = AddServiceRecord(records: recordRepository)
+        updateServiceRecord = UpdateServiceRecord(records: recordRepository)
+        recordEditing = recordRepository
         receiptPreparer = ImageIOReceiptPreparer()
     }
 
     func makeServiceRecordFormViewModel(vehicleID: Vehicle.ID, currentMileageKm: Int) -> ServiceRecordFormViewModel {
         ServiceRecordFormViewModel(
-            vehicleID: vehicleID, currentMileageKm: currentMileageKm, addServiceRecord: addServiceRecord,
+            mode: .add(vehicleID: vehicleID), currentMileageKm: currentMileageKm,
+            addServiceRecord: addServiceRecord, updateServiceRecord: updateServiceRecord, records: recordEditing,
             receiptPreparer: receiptPreparer)
+    }
+
+    /// Форма правки. `currentMileageKm` — пробег машины без учёта самой записи (считает вызывающий).
+    func makeServiceRecordFormViewModel(
+        editing record: ServiceRecord, hasStoredReceipt: Bool, storedReceipt: Data?, currentMileageKm: Int
+    ) -> ServiceRecordFormViewModel {
+        ServiceRecordFormViewModel(
+            mode: .edit(original: record, hasStoredReceipt: hasStoredReceipt), currentMileageKm: currentMileageKm,
+            storedReceipt: storedReceipt, addServiceRecord: addServiceRecord,
+            updateServiceRecord: updateServiceRecord, records: recordEditing, receiptPreparer: receiptPreparer)
+    }
+
+    func makeVehicleDetailViewModel() -> VehicleDetailViewModel {
+        VehicleDetailViewModel(records: recordEditing)
     }
 
     /// Боевой запуск: хранилище готовится вне главного потока, затем собираются зависимости.

@@ -95,7 +95,7 @@ ViewModel (`makeServiceRecordFormViewModel(vehicleID:currentMileageKm:)`) и о�
 4. **Адаптер** — `SwiftDataServiceRecordRepository` поверх `ServiceLog.add` (запись и постановка в
    очередь синхронизации в одном сохранении). Тесты: запись добавлена и в очереди; нет машины →
    `vehicleNotFound` (`AdapterTests.swift`).
-5. **ViewModel** — `ServiceRecordFormViewModel`: `draft`, `errors`, `receipt`, `save() async -> Bool`,
+5. **ViewModel** — `ServiceRecordFormViewModel`: `draft`, `errors`, `receiptPreview`, `save() async -> Bool`,
    `loadReceipt(_:)` с generation-счётчиком. Тесты: ошибки валидации в `errors`, успешное сохранение
    с чеком, сбой → `saveFailed`, устаревшая загрузка чека не перетирает новую
    (`ServiceRecordFormViewModelTests.swift`).
@@ -106,8 +106,7 @@ ViewModel (`makeServiceRecordFormViewModel(vehicleID:currentMileageKm:)`) и о�
 
 ## Шаблон: правка и удаление
 
-План: `docs/plans/stage-9-edit-delete-records.md`. Часть A (GarageCore) реализована, часть B
-(адаптер, ViewModel, вью) — нет.
+План: `docs/plans/stage-9-edit-delete-records.md`. Реализовано целиком (GarageCore, адаптер, ViewModel, вью).
 
 - Порт: отдельный протокол `ServiceRecordEditing` (`update(_:receipt:)`, `delete(id:)`), а не новые
   методы `ServiceRecordRepository`: существующие адаптеры и фейки не ломаются. Адаптер реализует оба
@@ -121,10 +120,17 @@ ViewModel (`makeServiceRecordFormViewModel(vehicleID:currentMileageKm:)`) и о�
   Удаление без правил — ViewModel зовёт `ServiceRecordEditing.delete` напрямую (подтверждение — это UI).
 - Черновик: `ServiceRecordDraft(record:decimalSeparator:)` для формы правки (`Money.DecimalSeparator`:
   ViewModel выбирает `.comma`, только если в локали `,`, иначе `.period`), `makeRecord(id:vehicleID:)`.
-- Адаптер (B): правка через `update(from:)` и `SyncQueue.enqueueUpsert`, удаление — `SyncQueue.enqueueDelete`
-  в том же сохранении, что и `context.delete`; чек меняется только через `setReceiptImage`.
-- ViewModel (B): форма переиспользует `ServiceRecordFormViewModel` с режимом правки; удаление —
-  действие в ViewModel экрана деталей.
+- Адаптер: `ServiceLog.update` — `update(from:)` и `SyncQueue.enqueueUpsert`; `ServiceLog.delete` —
+  `SyncQueue.enqueueDelete` в том же сохранении, что и `context.delete`. Запись, у которой нет серверной
+  версии (`SyncVersionEntity`; ни разу не синхронизировалась), в очередь delete не попадает: из очереди
+  убирается её pending-правка. Чек меняется только через `setReceiptImage`. Если тип записи сменили,
+  `rawServiceType` сбрасывается. Модель SwiftData не менялась, `schemaVersion` не растёт.
+- ViewModel: форма переиспользует `ServiceRecordFormViewModel` с режимом правки (`Mode.edit`);
+  состояние чека — одно поле `receiptSelection`, `ReceiptChange` вычисляется из него. Разделитель
+  денег выбирает ViewModel по `Locale.current`. Удаление из списка — `VehicleDetailViewModel`
+  (`pendingDeletion`, `delete(id:)`), из формы — `ServiceRecordFormViewModel.delete()`.
+- Вью: строка записи открывает форму правки (`editingSnapshot()` из `DisplayMapping`); свайп «Удалить» —
+  без `role: .destructive`, иначе List уберёт строку до подтверждения.
 
 ## Что проверяет `scripts/check.sh --only architecture`
 

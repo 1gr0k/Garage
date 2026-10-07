@@ -13,7 +13,7 @@ description: Чек-лист новой фичи приложения по сл�
 
 | | Да | Нет |
 |---|---|---|
-| Пример | `AddServiceRecord`, `RegisterDevice`, `ForgetDevice` | `ReceiptImagePreparing`, `SyncService.status()` |
+| Пример | `AddServiceRecord`, `UpdateServiceRecord`, `RegisterDevice`, `ForgetDevice` | `ReceiptImagePreparing`, `SyncService.status()`, удаление записи через `ServiceRecordEditing.delete` |
 | ViewModel зависит от | use case (`struct` из GarageCore) | протокола порта напрямую |
 | Шаг 3 | делать | пропустить |
 

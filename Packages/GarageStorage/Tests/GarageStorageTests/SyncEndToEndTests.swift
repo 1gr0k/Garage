@@ -101,6 +101,73 @@ private struct Device {
         }
     }
 
+    @Test func editWithNewReceiptReachesServerAndAnotherDevice() async throws {
+        let server = FakeSyncServer()
+        let first = try Device()
+        let second = try Device()
+        let vehicle = Vehicle.samples[2]
+        try VehicleLog.add(vehicle, in: first.container)
+        let record = try makeSyncRecord(for: vehicle, notes: "до")
+        try ServiceLog.add(record, receiptImage: Data([1, 2]), toVehicleWithID: vehicle.id, in: first.container)
+        _ = try await first.sync(with: server)
+        _ = try await second.sync(with: server)
+
+        let photo = Data([7, 7, 7])
+        let changed = try ServiceRecord(
+            id: record.id, vehicleID: vehicle.id, date: record.date, mileageKm: 2000, serviceType: .brakes,
+            laborCost: record.laborCost, notes: "после")
+        try ServiceLog.update(changed, receipt: .replace(photo), in: first.container)
+        let baseVersion = try #require(try await first.store.pendingChanges().first?.baseVersion)
+        let report = try await first.sync(with: server)
+        _ = try await second.sync(with: server)
+
+        #expect(report.pushed == 1 && report.stillPending.isEmpty && report.receiptFailures.isEmpty)
+        #expect(await server.blobs[ServiceRecordEntity.sha256Hex(photo)] == photo)
+        #expect(baseVersion > 0)
+        let received = try #require(second.records().first)
+        #expect(try received.toDomain() == changed)
+        #expect(received.receiptImage == photo)
+    }
+
+    @Test func deleteReachesServerAndAnotherDevice() async throws {
+        let server = FakeSyncServer()
+        let first = try Device()
+        let second = try Device()
+        let vehicle = Vehicle.samples[2]
+        try VehicleLog.add(vehicle, in: first.container)
+        let record = try makeSyncRecord(for: vehicle)
+        try ServiceLog.add(record, toVehicleWithID: vehicle.id, in: first.container)
+        _ = try await first.sync(with: server)
+        _ = try await second.sync(with: server)
+        #expect(try second.records().count == 1)
+
+        try ServiceLog.delete(id: record.id, in: first.container)
+        _ = try await first.sync(with: server)
+        _ = try await second.sync(with: server)
+
+        #expect(await server.liveCount(.serviceRecord) == 0)
+        #expect(try first.records().isEmpty && second.records().isEmpty)
+        #expect(try await first.store.pendingChanges().isEmpty)
+    }
+
+    @Test func recordDeletedBeforeFirstSyncNeverReachesServer() async throws {
+        let server = FakeSyncServer()
+        let device = try Device()
+        let vehicle = Vehicle.samples[2]
+        try VehicleLog.add(vehicle, in: device.container)
+        let record = try makeSyncRecord(for: vehicle)
+        try ServiceLog.add(record, receiptImage: Data([1]), toVehicleWithID: vehicle.id, in: device.container)
+
+        try ServiceLog.delete(id: record.id, in: device.container)
+        let report = try await device.sync(with: server)
+
+        #expect(report.pushed == 1)
+        #expect(await server.liveCount(.vehicle) == 1)
+        #expect(await server.liveCount(.serviceRecord) == 0)
+        #expect(await server.blobs.isEmpty)
+        #expect(try await device.store.pendingChanges().isEmpty)
+    }
+
     @Test func tombstoneIsNotResurrectedByOlderUpsert() async throws {
         let container = try GarageStore.makeContainer(inMemory: true)
         let store = SwiftDataSyncStore(modelContainer: container)

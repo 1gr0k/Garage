@@ -32,15 +32,36 @@ actor Gate {
 
 struct TestFailure: Error {}
 
-actor FakeRecordRepository: ServiceRecordRepository {
+actor FakeRecordRepository: ServiceRecordRepository, ServiceRecordEditing {
     private(set) var added: [(record: ServiceRecord, receipt: Data?)] = []
+    private(set) var updated: [(record: ServiceRecord, receipt: ReceiptChange)] = []
+    private(set) var deleted: [ServiceRecord.ID] = []
     private var error: (any Error)?
+    private var updateError: (any Error)?
+    private var deleteError: (any Error)?
+    private var deleteGate: Gate?
 
+    /// Ошибка для `add`.
     func failWith(_ error: (any Error)?) { self.error = error }
+    func failUpdate(with error: (any Error)?) { updateError = error }
+    func failDelete(with error: (any Error)?) { deleteError = error }
+    /// `delete` будет ждать, пока тест не откроет барьер.
+    func holdDelete(at gate: Gate) { deleteGate = gate }
 
     func add(_ record: ServiceRecord, receiptImage: Data?) async throws {
         if let error { throw error }
         added.append((record, receiptImage))
+    }
+
+    func update(_ record: ServiceRecord, receipt: ReceiptChange) async throws {
+        if let updateError { throw updateError }
+        updated.append((record, receipt))
+    }
+
+    func delete(id: ServiceRecord.ID) async throws {
+        deleted.append(id)
+        if let deleteGate { await deleteGate.arriveAndWait() }
+        if let deleteError { throw deleteError }
     }
 }
 
