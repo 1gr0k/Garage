@@ -593,6 +593,9 @@ valid number, Mileage, km, Vehicle Not Found, This can't be undone.
   что pending-upsert'ы записей сняты. Повторять `internal` или нет — решение для `SyncEngine`, в этом
   этапе не меняется. Записать в отчёт.
 - **Лишняя правка в отчёте sync.** `report.stillPending` считается до pull (`SyncEngine.swift:120`), поэтому upsert записи, придержанный push'ем и снятый tombstone'ом машины, всё равно попадает в отчёт; было и до этапа, здесь случается чаще — не меняется.
+- **Дублирование расчёта пробега по записям.** `VehicleDetailView` считает «пробег по записям» для подсказки
+  формы как `records.map(\.mileageKm).max()`, это повторяет логику `Vehicle.currentMileageKm(records:)`.
+  Вынести в GarageCore (например `Vehicle.recordedMileageKm(records:)`) — отдельная задача.
 - **Устаревшая форма правки.** Форма открыта, а машину правят на другом устройстве. Как на этапе 9:
   LWW по сущности целиком, снимок формы перезапишет чужие поля.
 - **`FakeSyncServer` и `ChangeWriter`.** В B1 фейк приведён к серверу там, где его трогает удаление:

@@ -19,9 +19,30 @@ private struct VehicleDetailContent: View {
     @Query private var recordEntities: [ServiceRecordEntity]
     @State private var viewModel: VehicleDetailViewModel
     @Environment(\.dismiss) private var dismiss
-    @State private var isAddingRecord = false
-    @State private var isEditingVehicle = false
-    @State private var editing: ServiceRecordEditingSnapshot?
+    // Данные для форм снимаются в момент открытия, а шиты висят на `body`, а не на ветке с содержимым:
+    // если машину удалят на другом устройстве, форма останется открытой и покажет `vehicleGone` при сохранении.
+    @State private var newRecord: NewRecordRequest?
+    @State private var vehicleEdit: VehicleEditRequest?
+    @State private var recordEdit: RecordEditRequest?
+
+    private struct NewRecordRequest: Identifiable {
+        let vehicleID: Vehicle.ID
+        let currentMileageKm: Int
+        var id: Vehicle.ID { vehicleID }
+    }
+
+    private struct VehicleEditRequest: Identifiable {
+        let vehicle: Vehicle
+        let recordsMileageKm: Int?
+        var id: Vehicle.ID { vehicle.id }
+    }
+
+    private struct RecordEditRequest: Identifiable {
+        let snapshot: ServiceRecordEditingSnapshot
+        /// Пробег машины без самой записи: правка может его уменьшить.
+        let currentMileageKm: Int
+        var id: ServiceRecord.ID { snapshot.id }
+    }
 
     init(vehicleID: Vehicle.ID, viewModel: VehicleDetailViewModel) {
         _vehicleEntities = Query(filter: #Predicate { $0.id == vehicleID })
@@ -34,10 +55,28 @@ private struct VehicleDetailContent: View {
     }
 
     var body: some View {
-        if let vehicle = vehicleEntities.validVehicles().first?.vehicle {
-            content(vehicle: vehicle)
-        } else {
-            ContentUnavailableView("Vehicle Not Found", systemImage: "questionmark.circle")
+        Group {
+            if let vehicle = vehicleEntities.validVehicles().first?.vehicle {
+                content(vehicle: vehicle)
+            } else {
+                ContentUnavailableView("Vehicle Not Found", systemImage: "questionmark.circle")
+            }
+        }
+        .sheet(item: $newRecord) { request in
+            ServiceRecordFormView(
+                viewModel: dependencies.makeServiceRecordFormViewModel(
+                    vehicleID: request.vehicleID, currentMileageKm: request.currentMileageKm))
+        }
+        .sheet(item: $vehicleEdit) { request in
+            VehicleFormView(
+                viewModel: dependencies.makeVehicleFormViewModel(
+                    editing: request.vehicle, recordsMileageKm: request.recordsMileageKm))
+        }
+        .sheet(item: $recordEdit) { request in
+            ServiceRecordFormView(
+                viewModel: dependencies.makeServiceRecordFormViewModel(
+                    editing: request.snapshot.record, hasStoredReceipt: request.snapshot.hasReceipt,
+                    storedReceipt: request.snapshot.receiptImage, currentMileageKm: request.currentMileageKm))
         }
     }
 
@@ -54,7 +93,7 @@ private struct VehicleDetailContent: View {
             Section("Service History") {
                 ForEach(records) { record in
                     Button {
-                        editing = snapshot(of: record.id)
+                        recordEdit = recordEditRequest(for: record.id, vehicle: vehicle, records: records)
                     } label: {
                         ServiceRecordRow(record: record, hasReceipt: receiptIDs.contains(record.id))
                             .contentShape(Rectangle())
@@ -78,21 +117,21 @@ private struct VehicleDetailContent: View {
         .navigationTitle(vehicle.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            Button("Add Record", systemImage: "plus") { isAddingRecord = true }
-                .disabled(viewModel.isDeleting)
+            Button("Add Record", systemImage: "plus") {
+                newRecord = NewRecordRequest(vehicleID: vehicle.id, currentMileageKm: mileage)
+            }
+            .disabled(viewModel.isDeleting)
             Menu("More", systemImage: "ellipsis.circle") {
-                Button("Edit", systemImage: "pencil") { isEditingVehicle = true }
-                    .disabled(viewModel.isDeleting)
+                Button("Edit", systemImage: "pencil") {
+                    vehicleEdit = VehicleEditRequest(
+                        vehicle: vehicle, recordsMileageKm: records.map(\.mileageKm).max())
+                }
+                .disabled(viewModel.isDeleting)
                 Button("Delete Vehicle", systemImage: "trash", role: .destructive) {
                     viewModel.isConfirmingVehicleDeletion = true
                 }
                 .disabled(viewModel.isDeleting)
             }
-        }
-        .sheet(isPresented: $isEditingVehicle) {
-            VehicleFormView(
-                viewModel: dependencies.makeVehicleFormViewModel(
-                    editing: vehicle, recordsMileageKm: records.map(\.mileageKm).max()))
         }
         .confirmationDialog(
             "Delete this vehicle?", isPresented: $viewModel.isConfirmingVehicleDeletion, titleVisibility: .visible
@@ -100,6 +139,7 @@ private struct VehicleDetailContent: View {
             Button("Delete Vehicle", role: .destructive) {
                 Task { if await viewModel.deleteVehicle(id: vehicle.id) { dismiss() } }
             }
+            Button("Cancel", role: .cancel) {}
         } message: {
             VehicleDeletionMessage(recordCount: recordEntities.count)
         }
@@ -107,20 +147,6 @@ private struct VehicleDetailContent: View {
             Button("OK") {}
         } message: {
             Text("The vehicle could not be deleted. Please try again.")
-        }
-        .sheet(isPresented: $isAddingRecord) {
-            ServiceRecordFormView(
-                viewModel: dependencies.makeServiceRecordFormViewModel(
-                    vehicleID: vehicle.id, currentMileageKm: mileage))
-        }
-        .sheet(item: $editing) { snapshot in
-            // Пробег без самой записи: правка может его уменьшить.
-            let others = records.filter { $0.id != snapshot.id }
-            ServiceRecordFormView(
-                viewModel: dependencies.makeServiceRecordFormViewModel(
-                    editing: snapshot.record, hasStoredReceipt: snapshot.hasReceipt,
-                    storedReceipt: snapshot.receiptImage,
-                    currentMileageKm: vehicle.currentMileageKm(records: others)))
         }
         .confirmationDialog(
             "Delete this record?",
@@ -143,9 +169,14 @@ private struct VehicleDetailContent: View {
         }
     }
 
-    private func snapshot(of id: ServiceRecord.ID) -> ServiceRecordEditingSnapshot? {
-        guard let entity = recordEntities.first(where: { $0.id == id }) else { return nil }
-        return try? entity.editingSnapshot()
+    private func recordEditRequest(
+        for id: ServiceRecord.ID, vehicle: Vehicle, records: [ServiceRecord]
+    ) -> RecordEditRequest? {
+        guard let entity = recordEntities.first(where: { $0.id == id }),
+            let snapshot = try? entity.editingSnapshot()
+        else { return nil }
+        let others = records.filter { $0.id != id }
+        return RecordEditRequest(snapshot: snapshot, currentMileageKm: vehicle.currentMileageKm(records: others))
     }
 }
 

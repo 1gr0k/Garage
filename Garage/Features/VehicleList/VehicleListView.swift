@@ -80,6 +80,7 @@ private struct VehicleListContent: View {
                 Button("Delete Vehicle", role: .destructive) {
                     Task { await viewModel.delete(id: id) }
                 }
+                Button("Cancel", role: .cancel) {}
             } message: { id in
                 VehicleDeletionMessage(recordCount: vehicles.first { $0.id == id }?.recordCount ?? 0)
             }
