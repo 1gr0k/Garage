@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    container: swift:6.4-noble
+    steps:
+      - name: Install jq
+        run: apt-get update && apt-get install -y --no-install-recommends jq git
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            Packages/GarageCore/.build
+            Packages/GarageAPI/.build
+            Packages/GarageSync/.build
+            Server/.build
+          key: swift-build-${{ runner.os }}-${{ hashFiles('Server/Package.resolved', 'Packages/*/Package.swift', 'Server/Package.swift') }}
+          restore-keys: swift-build-${{ runner.os }}-
+
+      - name: swift-format version
+        run: swift format --version
+
+      - name: architecture
+        run: scripts/check.sh --only architecture
+
+      - name: linux
+        run: scripts/check.sh --only linux
+
+      - name: strings
+        run: scripts/check.sh --only strings

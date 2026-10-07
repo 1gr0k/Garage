@@ -2,6 +2,8 @@
 # Definition of done in one command (see CLAUDE.md).
 #   scripts/check.sh                       all sections
 #   scripts/check.sh --only architecture|linux|ios|strings
+# CI (GitHub Actions, Linux) runs only `architecture`, `linux` and `strings`;
+# `ios` needs Xcode and a simulator and runs locally only.
 # Stops at the first failure and reports which section failed.
 # New local package: add it to `linux` (swift test) or `ios` (xcodebuild test).
 set -euo pipefail
@@ -20,6 +22,11 @@ case "${1:-}" in
         ;;
     *) echo "$usage" >&2; exit 64 ;;
 esac
+
+# require <команда> <секция>: понятная ошибка вместо падения посреди секции.
+require() {
+    command -v "$1" >/dev/null 2>&1 || { echo "check.sh: section \"$2\" needs \`$1\`, which is not installed" >&2; return 1; }
+}
 
 current=""
 trap 'status=$?; [[ $status -eq 0 || -z "$current" ]] || echo "check.sh: section \"$current\" FAILED" >&2' EXIT
@@ -61,6 +68,8 @@ read_files() {
 }
 
 section_architecture() {
+    require swift architecture
+    swift format --version >/dev/null 2>&1 || { echo "check.sh: section \"architecture\" needs \`swift format\`" >&2; return 1; }
     # Начало строки импорта до имени модуля: атрибуты (`@_exported`, `@_spi(X)`, `@preconcurrency`),
     # уровень доступа (`public import`) и импорт отдельного объявления (`import struct M.T`).
     local import='^[[:space:]]*(@[A-Za-z_]+(\([^)]*\))?[[:space:]]+)*((public|package|internal|fileprivate|private)[[:space:]]+)?import[[:space:]]+((typealias|struct|class|enum|protocol|let|var|func)[[:space:]]+)?'
@@ -139,6 +148,7 @@ sim_destination() {
 }
 
 section_ios() {
+    require xcodebuild ios
     local dest
     dest=$(sim_destination)
     echo "==> xcodebuild test GarageStorage ($dest)"
@@ -151,6 +161,7 @@ section_ios() {
 # Lists catalog keys that are stale, lack `ru`, have a `ru` state other than
 # `translated`, or have a `ru` plural missing one/few/many/other.
 section_strings() {
+    require jq strings
     local catalog=Garage/Localizable.xcstrings keys
     keys=$(jq -r '.strings | to_entries[]
       | select(.value.shouldTranslate != false)
