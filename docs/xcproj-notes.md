@@ -119,6 +119,7 @@ xcodebuild -project Garage.xcodeproj -scheme Garage \
 - Без `SDKROOT`/`SUPPORTED_PLATFORMS` симуляторы не подходят: `doesn’t match .xctest’s supported platforms`.
 - Схема создаётся автоматически с именем таргета: тесты запускаются командой
   `xcodebuild test -project Garage.xcodeproj -scheme GarageTests -destination '<…>'` (она же собирает хост `Garage.app`). Схема `Garage` для действия test не настроена (`Scheme Garage is not currently configured for the test action`), а ключей для схем в формате нет.
+- **Зависимость от хоста.** `test-host-target` порядок сборки не задаёт. Нужен ещё `"dependencies": ["Garage"]` (имена таргетов; форматтер неизвестные ключи молча выбрасывает, этот оставляет). Без него чистая сборка схемы `GarageTests` падает с `Unable to resolve module dependency: 'Garage'` (и для пакетов хоста), а на прогретом DerivedData тесты проходят только потому, что `Garage` собрали раньше. Проверять с `rm -rf` DerivedData проекта.
 - `@testable import Garage` работает (модуль приложения называется `Garage`; в Debug включён `ENABLE_TESTABILITY`).
 - **Хост и debug-dylib.** В Debug приложение собирается как заглушка `Garage` + `Garage.debug.dylib`, а `test-host-target` сам по себе `TEST_HOST`/`BUNDLE_LOADER` не выставляет: тесты запускались без хоста (через голый `xctest`), а ссылки на символы приложения давали `Undefined symbol`. Пока тест только `import`-ил модуль, это не проявлялось (линкер выбрасывал неиспользуемое). Рабочие настройки тестового таргета:
   ```jsonc

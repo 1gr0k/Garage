@@ -96,6 +96,45 @@ private actor URLCancelledTransport: HTTPTransport {
     }
 }
 
+@Suite struct VehicleRepositoryAdapterTests {
+    @Test func repositoryAddsUpdatesAndDeletesVehicle() async throws {
+        let container = try GarageStore.makeContainer(inMemory: true)
+        let repository = SwiftDataVehicleRepository(container: container)
+        let vehicle = Vehicle.samples[0]
+
+        try await repository.add(vehicle)
+        #expect(try ModelContext(container).fetch(FetchDescriptor<VehicleEntity>()).map(\.id) == [vehicle.id])
+
+        var changed = vehicle
+        changed.make = "Lexus"
+        try await repository.update(changed)
+        #expect(try ModelContext(container).fetch(FetchDescriptor<VehicleEntity>()).first?.make == "Lexus")
+
+        try await repository.delete(id: vehicle.id)
+        #expect(try ModelContext(container).fetchCount(FetchDescriptor<VehicleEntity>()) == 0)
+        let pending = try await pendingChanges(container)
+        #expect(pending.map(\.operation) == [.delete(EntityRef(kind: .vehicle, id: vehicle.id))])
+    }
+
+    @Test func repositoryMapsMissingVehicleOnUpdate() async throws {
+        let container = try GarageStore.makeContainer(inMemory: true)
+        let vehicle = Vehicle.samples[0]
+
+        await #expect(throws: RepositoryError.vehicleNotFound(vehicle.id)) {
+            try await SwiftDataVehicleRepository(container: container).update(vehicle)
+        }
+        #expect(try await pendingChanges(container).isEmpty)
+    }
+
+    @Test func repositoryDeleteOfMissingVehicleIsSuccess() async throws {
+        let container = try GarageStore.makeContainer(inMemory: true)
+
+        try await SwiftDataVehicleRepository(container: container).delete(id: UUID())
+
+        #expect(try await pendingChanges(container).isEmpty)
+    }
+}
+
 @Suite struct SyncServiceTests {
     private func makeService(
         _ container: ModelContainer, credentials: MemoryCredentials = MemoryCredentials(),

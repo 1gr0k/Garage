@@ -58,10 +58,10 @@ struct ServiceRecordFormView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button(role: .close) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
+                    Button(role: .confirm) {
                         Task { if await viewModel.save() { dismiss() } }
                     }
                     .disabled(isPhotoPending || viewModel.isBusy)
@@ -84,6 +84,11 @@ struct ServiceRecordFormView: View {
                 Button("OK") { dismiss() }
             } message: {
                 Text("This record was deleted on another device.")
+            }
+            .alert("Vehicle Deleted", isPresented: $viewModel.vehicleGone) {
+                Button("OK") { dismiss() }
+            } message: {
+                Text("This vehicle was deleted on another device.")
             }
             .confirmationDialog("Delete this record?", isPresented: $isConfirmingDelete, titleVisibility: .visible) {
                 Button("Delete Record", role: .destructive) {

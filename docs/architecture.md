@@ -142,8 +142,17 @@ ViewModel (`makeServiceRecordFormViewModel(vehicleID:currentMileageKm:)`) и о�
 
 ## Удаление техники
 
-План: `docs/plans/stage-10-vehicles-crud.md` (раздел «Каскадное удаление»). Часть A (GarageCore,
-тесты GarageSync и сервера) сделана; хранилище и UI — часть B.
+План: `docs/plans/stage-10-vehicles-crud.md` (раздел «Каскадное удаление»). Реализовано целиком:
+часть A (GarageCore, тесты GarageSync и сервера) и часть B (хранилище, ViewModel, вью).
+
+- Хранилище: `VehicleLog.add` / `update` / `delete` (свежий контекст, одно сохранение, очередь в том же
+  сохранении), адаптер `SwiftDataVehicleRepository`. `SyncQueue.dropPendingUpserts(ofRecordsOf:in:)`
+  снимает pending-upsert'ы записей машины.
+- ViewModel: `VehicleFormViewModel` (форма добавления и правки; `AddVehicle` / `UpdateVehicle`, ошибки
+  исходной машины видны сразу при открытии правки), `VehicleListViewModel` (удаление свайпом),
+  `VehicleDetailViewModel.deleteVehicle` (общий флаг `isDeleting` с удалением записи).
+- Вью: свайп «Удалить» без `role: .destructive`; текст диалога — одним `Text` (диалог показывает только
+  один), см. `Garage/Shared/VehicleDeletionMessage.swift`.
 
 - В очередь ставится **только** `delete(.vehicle, id)`, без delete каждой записи: полноту и атомарность
   каскада даёт сервер (`ChangeWriter.delete` в одной транзакции ставит tombstones всем живым записям

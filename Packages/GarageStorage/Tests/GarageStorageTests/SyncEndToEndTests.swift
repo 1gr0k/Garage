@@ -11,9 +11,12 @@ private struct Device {
     let container: ModelContainer
     let store: SwiftDataSyncStore
 
-    init(seedSamples: Bool = false) throws {
+    /// - Parameter defaults: свои `UserDefaults` устройства; с ними машины сеются как при первом запуске приложения.
+    init(seedSamples: Bool = false, defaults: UserDefaults? = nil) throws {
         container = try GarageStore.makeContainer(inMemory: true)
-        if seedSamples {
+        if let defaults {
+            try SampleSeeder.seedIfNeeded(container, defaults: defaults)
+        } else if seedSamples {
             let context = ModelContext(container)
             SampleSeeder.insertSamples(into: context)
             try context.save()
@@ -210,6 +213,162 @@ private actor DeleteDuringPushTransport: HTTPTransport {
         #expect(try device.records().isEmpty)
         #expect(await server.liveCount(.serviceRecord) == 0)
         #expect(try await device.store.pendingChanges().isEmpty)
+    }
+
+    // MARK: Удаление машины
+
+    @Test func vehicleDeleteCascadesToAnotherDevice() async throws {
+        let server = FakeSyncServer()
+        let first = try Device()
+        let second = try Device()
+        let vehicle = Vehicle.samples[2]
+        try VehicleLog.add(vehicle, in: first.container)
+        for notes in ["раз", "два"] {
+            try ServiceLog.add(
+                try makeSyncRecord(for: vehicle, notes: notes), toVehicleWithID: vehicle.id, in: first.container)
+        }
+        _ = try await first.sync(with: server)
+        _ = try await second.sync(with: server)
+        #expect(try second.vehicles().count == 1 && second.records().count == 2)
+
+        try VehicleLog.delete(id: vehicle.id, in: first.container)
+        let report = try await first.sync(with: server)
+        _ = try await second.sync(with: server)
+
+        // В очереди был один delete машины; tombstones записей сделал сервер.
+        #expect(report.pushed == 1 && report.rejected.isEmpty)
+        let pushes = try await server.requests.filter { $0.method == "POST" }.map {
+            try APICoding.makeDecoder().decode(PushRequest.self, from: $0.body ?? Data())
+        }
+        #expect(pushes.last?.changes.map(\.operation) == [.delete(.vehicle, id: vehicle.id)])
+        #expect(await server.liveCount(.vehicle) == 0)
+        #expect(await server.liveCount(.serviceRecord) == 0)
+        #expect(try second.vehicles().isEmpty && second.records().isEmpty)
+        #expect(try await first.store.pendingChanges().isEmpty)
+        #expect(try await second.store.pendingChanges().isEmpty)
+    }
+
+    @Test func deletingVehicleWithUnsyncedRecordPushesWithoutRejections() async throws {
+        let server = FakeSyncServer()
+        let device = try Device()
+        let vehicle = Vehicle.samples[2]
+        try VehicleLog.add(vehicle, in: device.container)
+        _ = try await device.sync(with: server)
+        let record = try makeSyncRecord(for: vehicle)
+        try ServiceLog.add(record, receiptImage: Data([1, 2, 3]), toVehicleWithID: vehicle.id, in: device.container)
+
+        try VehicleLog.delete(id: vehicle.id, in: device.container)
+        let report = try await device.sync(with: server)
+
+        #expect(report.rejected.isEmpty && report.skipped.isEmpty && report.receiptFailures.isEmpty)
+        #expect(report.pushed == 1)
+        #expect(await server.receiptUploadCount == 0)
+        #expect(await server.liveCount(.vehicle) == 0)
+        #expect(await server.liveCount(.serviceRecord) == 0)
+        #expect(try device.vehicles().isEmpty && device.records().isEmpty)
+        #expect(try await device.store.pendingChanges().isEmpty)
+    }
+
+    @Test func vehicleDeletedWhilePushIsInFlight() async throws {
+        let server = FakeSyncServer()
+        let device = try Device()
+        let vehicle = Vehicle.samples[2]
+        try VehicleLog.add(vehicle, in: device.container)
+        _ = try await device.sync(with: server)
+        let record = try makeSyncRecord(for: vehicle)
+        try ServiceLog.add(record, toVehicleWithID: vehicle.id, in: device.container)
+        let transport = DeleteDuringPushTransport(server: server) {
+            try? VehicleLog.delete(id: vehicle.id, in: device.container)
+        }
+        let engine = SyncEngine(
+            store: device.store, client: SyncAPIClient(transport: transport, token: "t"), receipts: device.store)
+
+        // Первый sync: upsert записи уже ушёл, ответ `applied` ничего не находит по `changeID`.
+        _ = try await engine.sync()
+        #expect(try await server.liveCount(.serviceRecord) == 1)
+        // Второй: уходит delete машины, каскад сервера ставит tombstone записи.
+        let second = try await engine.sync()
+        _ = try await engine.sync()
+
+        #expect(second.pushed == 1 && second.rejected.isEmpty)
+        #expect(try device.vehicles().isEmpty && device.records().isEmpty)
+        #expect(await server.liveCount(.vehicle) == 0)
+        #expect(await server.liveCount(.serviceRecord) == 0)
+        #expect(await server.version(of: .serviceRecord, id: record.id) != nil)
+        #expect(try await device.store.pendingChanges().isEmpty)
+    }
+
+    @Test func recordAddedToVehicleDeletedOnAnotherDevice() async throws {
+        let server = FakeSyncServer()
+        let first = try Device()
+        let second = try Device()
+        let vehicle = Vehicle.samples[2]
+        try VehicleLog.add(vehicle, in: first.container)
+        _ = try await first.sync(with: server)
+        _ = try await second.sync(with: server)
+        try VehicleLog.delete(id: vehicle.id, in: first.container)
+        _ = try await first.sync(with: server)
+
+        try ServiceLog.add(
+            try makeSyncRecord(for: vehicle), receiptImage: Data([5]), toVehicleWithID: vehicle.id, in: second.container
+        )
+        let report = try await second.sync(with: server)
+
+        // Удаление побеждает: запись, добавленная к удалённой машине, теряется без падения sync.
+        #expect(report.rejected.map(\.error.code) == [.vehicleNotFound])
+        #expect(try second.vehicles().isEmpty && second.records().isEmpty)
+        #expect(try await second.store.pendingChangeCount() == 0)
+        let again = try await second.sync(with: server)
+        #expect(again.pushed == 0 && again.pulled == 0 && again.rejected.isEmpty)
+        #expect(await server.liveCount(.vehicle) == 0)
+        #expect(await server.liveCount(.serviceRecord) == 0)
+    }
+
+    @Test func deletedSampleVehicleStaysDeletedOnNewDevice() async throws {
+        let server = FakeSyncServer()
+        let first = try Device(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        _ = try await first.sync(with: server)
+        try VehicleLog.delete(id: Vehicle.SampleID.landCruiser, in: first.container)
+        _ = try await first.sync(with: server)
+        let tombstone = try #require(await server.version(of: .vehicle, id: Vehicle.SampleID.landCruiser))
+
+        let second = try Device(defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        #expect(try second.vehicles().count == 4)
+        _ = try await second.sync(with: server)
+
+        #expect(try second.vehicles().count == 3)
+        #expect(!(try second.vehicles().contains { $0.id == Vehicle.SampleID.landCruiser }))
+        #expect(await server.version(of: .vehicle, id: Vehicle.SampleID.landCruiser) == tombstone)
+        #expect(await server.liveCount(.vehicle) == 3)
+        #expect(try await second.store.pendingChanges().isEmpty)
+    }
+
+    @Test func pendingReceiptDownloadIsDroppedWithVehicle() async throws {
+        let server = FakeSyncServer()
+        let first = try Device()
+        let second = try Device()
+        let vehicle = Vehicle.samples[2]
+        try VehicleLog.add(vehicle, in: first.container)
+        try ServiceLog.add(
+            try makeSyncRecord(for: vehicle), receiptImage: Data([4, 5, 6]), toVehicleWithID: vehicle.id,
+            in: first.container)
+        _ = try await first.sync(with: server)
+        await server.blockReceiptDownloads()
+        let downloading = Task { try await second.sync(with: server) }
+        await server.waitForBlockedDownload()
+        #expect(try await second.store.missingReceipts().count == 1)
+
+        try VehicleLog.delete(id: vehicle.id, in: first.container)
+        _ = try await first.sync(with: server)
+        _ = try await second.sync(with: server)
+        #expect(try await second.store.missingReceipts().isEmpty)
+        await server.releaseReceiptDownloads()
+        let report = try await downloading.value
+
+        #expect(report.receiptFailures.isEmpty)
+        #expect(try second.vehicles().isEmpty && second.records().isEmpty)
+        #expect(try await second.store.missingReceipts().isEmpty)
+        #expect(try await second.store.pendingChanges().isEmpty)
     }
 
     @Test func tombstoneIsNotResurrectedByOlderUpsert() async throws {

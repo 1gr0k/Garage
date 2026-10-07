@@ -119,10 +119,74 @@ public enum VehicleLog {
     ///
     /// Like `ServiceLog.add`, the work happens in a fresh `ModelContext` of `container`.
     public static func add(_ vehicle: Vehicle, in container: ModelContainer) throws {
+        try add(vehicle, in: container) { try $0.save() }
+    }
+
+    /// `add` с подменяемым сохранением, чтобы тесты могли имитировать сбой.
+    static func add(
+        _ vehicle: Vehicle,
+        in container: ModelContainer,
+        save: (ModelContext) throws -> Void
+    ) throws {
         let context = ModelContext(container)
         context.autosaveEnabled = false
         context.insert(VehicleEntity(vehicle))
         try SyncQueue.enqueueUpsert(.vehicle(vehicle), in: context)
-        try context.save()
+        try save(context)
+    }
+
+    /// Заменяет поля машины с тем же `id` и ставит upsert в очередь синхронизации, в одном сохранении.
+    ///
+    /// Работает в свежем `ModelContext`, как `ServiceLog.update`.
+    public static func update(_ vehicle: Vehicle, in container: ModelContainer) throws {
+        try update(vehicle, in: container) { try $0.save() }
+    }
+
+    /// `update` с подменяемым сохранением, чтобы тесты могли имитировать сбой.
+    static func update(
+        _ vehicle: Vehicle,
+        in container: ModelContainer,
+        save: (ModelContext) throws -> Void
+    ) throws {
+        let context = ModelContext(container)
+        context.autosaveEnabled = false
+        guard let entity = try vehicleEntity(id: vehicle.id, in: context) else {
+            throw ServiceLogError.vehicleNotFound(vehicle.id)
+        }
+        entity.update(from: vehicle)
+        try SyncQueue.enqueueUpsert(.vehicle(vehicle), in: context)
+        try save(context)
+    }
+
+    /// Удаляет машину вместе с записями, частями и чеками (каскадом SwiftData) и ставит в очередь
+    /// **только** `delete(vehicle)`, в одном сохранении. Машины нет — не ошибка.
+    ///
+    /// Delete записей не ставится: каскад на сервере берёт его собственную таблицу, а pending-upsert'ы
+    /// записей снимаются из очереди (`SyncQueue.dropPendingUpserts`). Подробности — в плане этапа 10.
+    public static func delete(id: Vehicle.ID, in container: ModelContainer) throws {
+        try delete(id: id, in: container) { try $0.save() }
+    }
+
+    /// `delete` с подменяемым сохранением, чтобы тесты могли имитировать сбой.
+    static func delete(
+        id: Vehicle.ID,
+        in container: ModelContainer,
+        save: (ModelContext) throws -> Void
+    ) throws {
+        let context = ModelContext(container)
+        context.autosaveEnabled = false
+        guard let entity = try vehicleEntity(id: id, in: context) else { return }
+        // Delete ставится всегда, даже без `SyncVersionEntity`: как у `ServiceLog.delete`, её отсутствие не значит
+        // «на сервере машины нет». Pending-upsert самой машины схлопывается в delete.
+        try SyncQueue.enqueueDelete(EntityRef(kind: .vehicle, id: id), in: context)
+        try SyncQueue.dropPendingUpserts(ofRecordsOf: entity, in: context)
+        context.delete(entity)
+        try save(context)
+    }
+
+    private static func vehicleEntity(id: Vehicle.ID, in context: ModelContext) throws -> VehicleEntity? {
+        var descriptor = FetchDescriptor<VehicleEntity>(predicate: #Predicate { $0.id == id })
+        descriptor.fetchLimit = 1
+        return try context.fetch(descriptor).first
     }
 }
