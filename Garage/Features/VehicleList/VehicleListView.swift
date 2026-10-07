@@ -1,38 +1,25 @@
 import GarageCore
 import GarageStorage
-import OSLog
 import SwiftData
 import SwiftUI
 
-private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Garage", category: "Storage")
-
-struct ContentView: View {
+struct VehicleListView: View {
     @Query(sort: [SortDescriptor(\VehicleEntity.make), SortDescriptor(\VehicleEntity.model)])
     private var entities: [VehicleEntity]
 
     @State private var isShowingSyncSettings = false
 
-    private var vehicles: [(vehicle: Vehicle, recordCount: Int)] {
-        entities.compactMap { entity in
-            do {
-                return (try entity.toDomain(), entity.serviceRecords.count)
-            } catch {
-                logger.error("Skipping invalid vehicle \(entity.id, privacy: .public): \(error)")
-                return nil
-            }
-        }
-    }
-
     var body: some View {
+        let vehicles = entities.validVehicles()
         NavigationStack {
-            List(vehicles, id: \.vehicle.id) { vehicle, recordCount in
-                NavigationLink(value: vehicle.id) {
+            List(vehicles) { item in
+                NavigationLink(value: item.id) {
                     VStack(alignment: .leading) {
-                        Text(vehicle.displayName)
+                        Text(item.vehicle.displayName)
                             .font(.headline)
                         HStack(spacing: 0) {
-                            Text(verbatim: "\(String(vehicle.year)) · ")
-                            Text("\(recordCount) records")
+                            Text(verbatim: "\(String(item.vehicle.year)) · ")
+                            Text("\(item.recordCount) records")
                         }
                         .accessibilityElement(children: .combine)
                         .font(.subheadline)
@@ -60,9 +47,9 @@ struct ContentView: View {
 }
 
 #Preview {
-    let container = try! GarageStore.makeContainer(inMemory: true)
-    SampleSeeder.insertSamples(into: container.mainContext)
-    return ContentView()
-        .modelContainer(container)
-        .environment(SyncController(container: container))
+    let dependencies = AppDependencies.preview()
+    return VehicleListView()
+        .modelContainer(dependencies.container)
+        .environment(dependencies)
+        .environment(dependencies.syncViewModel)
 }

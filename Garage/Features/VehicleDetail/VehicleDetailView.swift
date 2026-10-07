@@ -1,12 +1,10 @@
 import GarageCore
 import GarageStorage
-import OSLog
 import SwiftData
 import SwiftUI
 
-private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Garage", category: "Storage")
-
 struct VehicleDetailView: View {
+    @Environment(AppDependencies.self) private var dependencies
     @Query private var vehicleEntities: [VehicleEntity]
     @Query private var recordEntities: [ServiceRecordEntity]
     @State private var isAddingRecord = false
@@ -16,31 +14,20 @@ struct VehicleDetailView: View {
         _recordEntities = Query(ServiceRecordEntity.descriptor(forVehicle: vehicleID))
     }
 
-    private var records: [ServiceRecord] {
-        recordEntities.compactMap { entity in
-            do {
-                return try entity.toDomain()
-            } catch {
-                logger.error("Skipping invalid record \(entity.id, privacy: .public): \(error)")
-                return nil
-            }
-        }
-    }
-
     private var receiptIDs: Set<UUID> {
         Set(recordEntities.lazy.filter(\.hasReceipt).map(\.id))
     }
 
     var body: some View {
-        if let entity = vehicleEntities.first, let vehicle = try? entity.toDomain() {
-            content(entity: entity, vehicle: vehicle)
+        if let vehicle = vehicleEntities.validVehicles().first?.vehicle {
+            content(vehicle: vehicle)
         } else {
             ContentUnavailableView("Vehicle Not Found", systemImage: "questionmark.circle")
         }
     }
 
-    private func content(entity: VehicleEntity, vehicle: Vehicle) -> some View {
-        let records = records
+    private func content(vehicle: Vehicle) -> some View {
+        let records = recordEntities.validRecords()
         let receiptIDs = receiptIDs
         let mileage = vehicle.currentMileageKm(records: records)
         return List {
@@ -66,10 +53,11 @@ struct VehicleDetailView: View {
             Button("Add Record", systemImage: "plus") { isAddingRecord = true }
         }
         .sheet(isPresented: $isAddingRecord) {
-            ServiceRecordFormView(vehicle: entity, currentMileageKm: mileage)
+            ServiceRecordFormView(
+                viewModel: dependencies.makeServiceRecordFormViewModel(
+                    vehicleID: vehicle.id, currentMileageKm: mileage))
         }
     }
-
 }
 
 private struct ServiceRecordRow: View {

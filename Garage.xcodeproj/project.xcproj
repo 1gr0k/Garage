@@ -108,14 +108,8 @@
         "compile-sources",
         "frameworks",
       ],
-      "package-product-members": [
-        {
-          "package": "GarageCore",
-          "product-name": "GarageCore",
-          "build-phase": { "build-phase": "frameworks" },
-        },
-      ],
       "build-settings": {
+        "BUNDLE_LOADER[config=Debug]": "$(BUILT_PRODUCTS_DIR)/Garage.app/Garage.debug.dylib",
         "GENERATE_INFOPLIST_FILE": "YES",
         "PRODUCT_BUNDLE_IDENTIFIER": "devplaceholder.GarageTests",
         "PRODUCT_NAME": "$(TARGET_NAME)",
@@ -125,6 +119,7 @@
         "SWIFT_DEFAULT_ACTOR_ISOLATION": "MainActor",
         "SWIFT_VERSION": "6.0",
         "TARGETED_DEVICE_FAMILY": "1,2",
+        "TEST_HOST": "$(BUILT_PRODUCTS_DIR)/Garage.app/Garage",
       },
     },
   ],

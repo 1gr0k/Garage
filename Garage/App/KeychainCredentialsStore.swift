@@ -1,14 +1,23 @@
 import Foundation
+import GarageCore
 import Security
 
 struct KeychainError: Error {
     var status: OSStatus
 }
 
-/// The device token of the sync server, kept as a generic password item.
-struct KeychainTokenStore {
+/// Токен устройства лежит в Keychain (generic password), адрес сервера — в `UserDefaults`.
+/// Секрет настройки сознательно нигде не хранится.
+nonisolated struct KeychainCredentialsStore: SyncCredentialsStore {
+    private static let serverURLKey = "Garage.sync.serverURL"
     private let service = "Garage.sync"
     private let account = "deviceToken"
+    /// `UserDefaults` потокобезопасен, но не помечен `Sendable`.
+    nonisolated(unsafe) private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
 
     private var query: [String: Any] {
         [
@@ -18,7 +27,7 @@ struct KeychainTokenStore {
         ]
     }
 
-    func read() -> String? {
+    func readToken() -> String? {
         var query = query
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -28,8 +37,8 @@ struct KeychainTokenStore {
         return String(data: data, encoding: .utf8)
     }
 
-    func save(_ token: String) throws {
-        // Replace in place, so a failed write never loses the previous token.
+    func saveToken(_ token: String) throws {
+        // Заменяем на месте, чтобы неудачная запись не потеряла прежний токен.
         let update = SecItemUpdate(
             query as CFDictionary, [kSecValueData as String: Data(token.utf8)] as CFDictionary)
         if update == errSecSuccess { return }
@@ -40,7 +49,19 @@ struct KeychainTokenStore {
         guard status == errSecSuccess else { throw KeychainError(status: status) }
     }
 
-    func delete() {
+    func deleteToken() {
         SecItemDelete(query as CFDictionary)
+    }
+
+    func readServerURL() -> URL? {
+        defaults.string(forKey: Self.serverURLKey).flatMap(URL.init(string:))
+    }
+
+    func saveServerURL(_ url: URL) {
+        defaults.set(url.absoluteString, forKey: Self.serverURLKey)
+    }
+
+    func deleteServerURL() {
+        defaults.removeObject(forKey: Self.serverURLKey)
     }
 }

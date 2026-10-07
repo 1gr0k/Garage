@@ -1,8 +1,9 @@
 import SwiftUI
 
 struct SyncSettingsView: View {
-    @Environment(SyncController.self) private var sync
+    @Environment(SyncViewModel.self) private var sync
     @Environment(\.dismiss) private var dismiss
+    @State private var isConfirmingForget = false
     @State private var serverText = ""
     /// Lives only here, in memory, until registration; never stored or passed on.
     @State private var secret = ""
@@ -33,7 +34,14 @@ struct SyncSettingsView: View {
                 .disabled(sync.isRegistered)
             if sync.isRegistered {
                 Label("Device registered", systemImage: "checkmark.circle")
-                Button("Forget Device", role: .destructive) { sync.forgetDevice() }
+                Button("Forget Device", role: .destructive) { isConfirmingForget = true }
+                    .confirmationDialog("Forget this device?", isPresented: $isConfirmingForget) {
+                        Button("Forget Device", role: .destructive) {
+                            Task { await sync.forgetDevice() }
+                        }
+                    } message: {
+                        Text("Synchronization will stop and its state will be reset. Data on this device stays.")
+                    }
             } else {
                 SecureField("Setup secret", text: $secret)
                 Button {
@@ -52,7 +60,7 @@ struct SyncSettingsView: View {
     private var syncSection: some View {
         Section("Synchronization") {
             Button {
-                Task { await sync.sync() }
+                sync.startSync()
             } label: {
                 HStack {
                     Text("Sync Now")
@@ -70,8 +78,7 @@ struct SyncSettingsView: View {
                 Text("\(sync.receiptFailureCount) receipts not transferred")
             }
             if let error = sync.lastError {
-                Text(verbatim: error)
-                    .foregroundStyle(.red)
+                Text(verbatim: error).foregroundStyle(.red)
             }
         }
     }

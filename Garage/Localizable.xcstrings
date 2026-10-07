@@ -675,6 +675,56 @@
         }
       }
     },
+    "Couldn't Open Garage" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось открыть гараж"
+          }
+        }
+      }
+    },
+    "The garage data could not be loaded." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось загрузить данные гаража."
+          }
+        }
+      }
+    },
+    "Retry" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Повторить"
+          }
+        }
+      }
+    },
+    "Forget this device?" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Забыть это устройство?"
+          }
+        }
+      }
+    },
+    "Synchronization will stop and its state will be reset. Data on this device stays." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Синхронизация остановится, её состояние будет сброшено. Данные на этом устройстве сохранятся."
+          }
+        }
+      }
+    },
     "Forget Device" : {
       "localizations" : {
         "ru" : {

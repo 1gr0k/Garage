@@ -120,4 +120,10 @@ xcodebuild -project Garage.xcodeproj -scheme Garage \
 - Схема создаётся автоматически с именем таргета: тесты запускаются командой
   `xcodebuild test -project Garage.xcodeproj -scheme GarageTests -destination '<…>'` (она же собирает хост `Garage.app`). Схема `Garage` для действия test не настроена (`Scheme Garage is not currently configured for the test action`), а ключей для схем в формате нет.
 - `@testable import Garage` работает (модуль приложения называется `Garage`; в Debug включён `ENABLE_TESTABILITY`).
-- Пакеты в тестовом таргете перечисляются в его собственном `package-product-members`; на уровне проекта `packages` уже есть.
+- **Хост и debug-dylib.** В Debug приложение собирается как заглушка `Garage` + `Garage.debug.dylib`, а `test-host-target` сам по себе `TEST_HOST`/`BUNDLE_LOADER` не выставляет: тесты запускались без хоста (через голый `xctest`), а ссылки на символы приложения давали `Undefined symbol`. Пока тест только `import`-ил модуль, это не проявлялось (линкер выбрасывал неиспользуемое). Рабочие настройки тестового таргета:
+  ```jsonc
+  "TEST_HOST": "$(BUILT_PRODUCTS_DIR)/Garage.app/Garage",
+  "BUNDLE_LOADER[config=Debug]": "$(BUILT_PRODUCTS_DIR)/Garage.app/Garage.debug.dylib",
+  ```
+- **Не линкуйте в тестовый таргет пакеты, которые уже в хосте.** Статическая копия `GarageCore` в бандле и в хосте даёт два набора метаданных типов: `error as? SyncFailure` в тесте возвращает `nil`, хотя тип тот же. Модули пакетов видны тестам и без `package-product-members` (берутся из `BUILT_PRODUCTS_DIR`), поэтому у `GarageTests` этого ключа нет.
+- На уровне проекта `packages` уже есть; в тестовом таргете `package-product-members` не нужен (см. выше). В примере выше он остался только как форма ключа для пакета, которого нет в хосте.
