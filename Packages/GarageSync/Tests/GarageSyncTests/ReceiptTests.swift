@@ -5,6 +5,10 @@ import Testing
 
 @testable import GarageSync
 
+#if canImport(FoundationNetworking)
+    import FoundationNetworking
+#endif
+
 private let shaA = String(repeating: "a", count: 64)
 private let shaB = String(repeating: "b", count: 64)
 private let recordB = uuid("44444444-4444-4444-8444-444444444444")

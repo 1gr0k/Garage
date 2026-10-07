@@ -9,8 +9,12 @@ hooks=$root/.claude/hooks
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
-: "${DEVELOPER_DIR:=/Applications/Xcode-27.2.0-Beta.2.app/Contents/Developer}"
-export DEVELOPER_DIR
+# Путь к Xcode по умолчанию — только на macOS; на Linux (CI) xcprojformatter нет.
+if [[ "$(uname)" == Darwin ]]; then
+    : "${DEVELOPER_DIR:=/Applications/Xcode-27.2.0-Beta.2.app/Contents/Developer}"
+    export DEVELOPER_DIR
+fi
+formatter=${DEVELOPER_DIR:+$DEVELOPER_DIR/usr/bin/xcprojformatter}
 
 failures=0
 input=""
@@ -100,12 +104,21 @@ edit_case() {
     expect format-xcproj "$2" "$1" "${4:-}" -- env CLAUDE_PROJECT_DIR="$xproj" "$hooks/format-xcproj.sh"
 }
 
-edit_case 0 'valid project' "$xcproj"
+# Кейсы, которые реально запускают xcprojformatter, пропускаются без него (Linux).
+if [[ -n "$formatter" && -x "$formatter" ]]; then
+    edit_case 0 'valid project' "$xcproj"
+else
+    echo "SKIP format-xcproj: valid project (no xcprojformatter)"
+fi
 edit_case 0 'not a project file' "$xproj/Garage/A.swift"
 edit_case 0 'project outside CLAUDE_PROJECT_DIR' "$tmp/elsewhere/Garage.xcodeproj/project.xcproj"
-awk '/"kind":/ && !removed { removed = 1; next } { print }' "$xcproj" >"$tmp/broken.xcproj"
-cp "$tmp/broken.xcproj" "$xcproj"
-edit_case 2 'package entry without "kind"' "$xcproj" 'xcprojformatter --update failed'
+if [[ -n "$formatter" && -x "$formatter" ]]; then
+    awk '/"kind":/ && !removed { removed = 1; next } { print }' "$xcproj" >"$tmp/broken.xcproj"
+    cp "$tmp/broken.xcproj" "$xcproj"
+    edit_case 2 'package entry without "kind"' "$xcproj" 'xcprojformatter --update failed'
+else
+    echo "SKIP format-xcproj: package entry without \"kind\" (no xcprojformatter)"
+fi
 
 # --- check-translations.sh ------------------------------------------------------------
 repo=$tmp/repo

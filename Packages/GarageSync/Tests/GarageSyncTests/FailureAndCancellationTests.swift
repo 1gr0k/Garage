@@ -5,6 +5,10 @@ import Testing
 
 @testable import GarageSync
 
+#if canImport(FoundationNetworking)
+    import FoundationNetworking
+#endif
+
 private func apiError(_ code: APIErrorCode, status: Int) -> SyncError {
     .api(status: status, APIError(code: code, message: "x"))
 }

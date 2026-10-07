@@ -5,6 +5,10 @@ import Testing
 
 @testable import GarageSync
 
+#if canImport(FoundationNetworking)
+    import FoundationNetworking
+#endif
+
 private let vehicleRef = ref(.vehicle, IDs.vehicle)
 private let recordRef = ref(.serviceRecord, IDs.record)
 

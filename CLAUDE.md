@@ -95,6 +95,10 @@ This is the new Xcode 27 JSON-based project format (JSON with trailing commas), 
 - Bash keeps the working directory between commands: create and edit files by paths from the repository root; use a subshell `(cd … && …)` for commands that must run elsewhere.
 - Create and modify files only with the Write/Edit tools, never via shell redirection (`cat >`, heredoc, `tee`, `echo >`): hooks, /rewind and file permissions apply only to Write/Edit. The PreToolUse hook `.claude/hooks/deny-shell-writes.sh` rejects such writes into the project (exit 2); `2>&1`, `/dev/null`, the scratchpad and `/tmp` stay allowed. It guards against habit, not deliberate bypass — `cp`/`mv`/`sed -i` are still off-limits by this rule. Hook changes need a case in `scripts/test-hooks.sh`.
 
+## CI
+
+`.github/workflows/ci.yml` (push to master, pull requests, manual dispatch): one job `linux` in the `swift:6.4-noble` container (the same toolchain as local Xcode 27.2, Swift 6.4) with `jq` installed. It runs `scripts/check.sh --only architecture`, `--only linux` and `--only strings` as separate steps. The `ios` section (Xcode, simulator) runs locally only. The `.build` directories of GarageCore, GarageAPI, GarageSync and Server are cached by a hash of `Package.resolved` + `Package.swift` (local packages have no `Package.resolved`). `scripts/test-hooks.sh` prints `SKIP` for the two format-xcproj cases that need `xcprojformatter` (macOS only).
+
 ## Definition of done
 
 1. `scripts/check.sh` passes. It runs the `architecture` (layer boundaries from `docs/architecture.md`, `swift format lint --strict`, hook cases), `linux` (package and Server tests), `ios` (GarageStorage tests and `GarageTests` on the simulator, which also builds the app) and `strings` (catalog fully translated) sections; `--only <section>` runs one. Destination comes from `$SIM_DESTINATION` or `CLAUDE.local.md`. New packages are added to the matching section of the script.
