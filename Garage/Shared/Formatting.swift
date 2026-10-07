@@ -56,6 +56,28 @@ extension ServiceRecordDraft.FieldError {
     }
 }
 
+extension VehicleKind {
+    var title: LocalizedStringResource {
+        switch self {
+        case .car: "Car"
+        case .motorcycle: "Motorcycle"
+        case .bicycle: "Bicycle"
+        }
+    }
+}
+
+extension VehicleDraft.FieldError {
+    var message: LocalizedStringResource {
+        switch self {
+        case .required: "Required"
+        case .notANumber: "Enter a valid number"
+        // Годы строками: числовая интерполяция добавила бы разделители тысяч («1,900»).
+        case .yearOutOfRange(let years): "Enter a year from \(String(years.lowerBound)) to \(String(years.upperBound))"
+        case .invalid(let error): error.message
+        }
+    }
+}
+
 extension ValidationError {
     var message: LocalizedStringResource {
         switch self {

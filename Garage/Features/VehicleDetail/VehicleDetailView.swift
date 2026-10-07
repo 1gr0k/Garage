@@ -18,7 +18,9 @@ private struct VehicleDetailContent: View {
     @Query private var vehicleEntities: [VehicleEntity]
     @Query private var recordEntities: [ServiceRecordEntity]
     @State private var viewModel: VehicleDetailViewModel
+    @Environment(\.dismiss) private var dismiss
     @State private var isAddingRecord = false
+    @State private var isEditingVehicle = false
     @State private var editing: ServiceRecordEditingSnapshot?
 
     init(vehicleID: Vehicle.ID, viewModel: VehicleDetailViewModel) {
@@ -77,6 +79,34 @@ private struct VehicleDetailContent: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             Button("Add Record", systemImage: "plus") { isAddingRecord = true }
+                .disabled(viewModel.isDeleting)
+            Menu("More", systemImage: "ellipsis.circle") {
+                Button("Edit", systemImage: "pencil") { isEditingVehicle = true }
+                    .disabled(viewModel.isDeleting)
+                Button("Delete Vehicle", systemImage: "trash", role: .destructive) {
+                    viewModel.isConfirmingVehicleDeletion = true
+                }
+                .disabled(viewModel.isDeleting)
+            }
+        }
+        .sheet(isPresented: $isEditingVehicle) {
+            VehicleFormView(
+                viewModel: dependencies.makeVehicleFormViewModel(
+                    editing: vehicle, recordsMileageKm: records.map(\.mileageKm).max()))
+        }
+        .confirmationDialog(
+            "Delete this vehicle?", isPresented: $viewModel.isConfirmingVehicleDeletion, titleVisibility: .visible
+        ) {
+            Button("Delete Vehicle", role: .destructive) {
+                Task { if await viewModel.deleteVehicle(id: vehicle.id) { dismiss() } }
+            }
+        } message: {
+            VehicleDeletionMessage(recordCount: recordEntities.count)
+        }
+        .alert("Couldn't Delete", isPresented: $viewModel.vehicleDeleteFailed) {
+            Button("OK") {}
+        } message: {
+            Text("The vehicle could not be deleted. Please try again.")
         }
         .sheet(isPresented: $isAddingRecord) {
             ServiceRecordFormView(

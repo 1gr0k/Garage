@@ -1098,6 +1098,238 @@
           }
         }
       }
+    },
+    "Add Vehicle" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Добавить машину"
+          }
+        }
+      }
+    },
+    "New Vehicle" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Новая машина"
+          }
+        }
+      }
+    },
+    "Edit Vehicle" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Правка машины"
+          }
+        }
+      }
+    },
+    "Edit" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Изменить"
+          }
+        }
+      }
+    },
+    "More" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ещё"
+          }
+        }
+      }
+    },
+    "Delete Vehicle" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Удалить машину"
+          }
+        }
+      }
+    },
+    "Delete this vehicle?" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Удалить эту машину?"
+          }
+        }
+      }
+    },
+    "Its %lld service records will be deleted too. This can't be undone." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Its %lld service record will be deleted too. This can't be undone."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Its %lld service records will be deleted too. This can't be undone."
+                }
+              }
+            }
+          }
+        },
+        "ru" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Вместе с ней будет удалена %lld запись. Это нельзя отменить."
+                }
+              },
+              "few" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Вместе с ней будут удалены %lld записи. Это нельзя отменить."
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Вместе с ней будут удалены %lld записей. Это нельзя отменить."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Вместе с ней будут удалены %lld записей. Это нельзя отменить."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "The vehicle could not be deleted. Please try again." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось удалить машину. Попробуйте ещё раз."
+          }
+        }
+      }
+    },
+    "The vehicle could not be stored. Please try again." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось сохранить машину. Попробуйте ещё раз."
+          }
+        }
+      }
+    },
+    "Kind" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Тип"
+          }
+        }
+      }
+    },
+    "Car" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Автомобиль"
+          }
+        }
+      }
+    },
+    "Motorcycle" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Мотоцикл"
+          }
+        }
+      }
+    },
+    "Bicycle" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Велосипед"
+          }
+        }
+      }
+    },
+    "Make" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Марка"
+          }
+        }
+      }
+    },
+    "Model" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Модель"
+          }
+        }
+      }
+    },
+    "Year" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Год"
+          }
+        }
+      }
+    },
+    "Enter a year from %@ to %@" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Введите год от %1$@ до %2$@"
+          }
+        }
+      }
+    },
+    "By records: %@" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "По записям: %@"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

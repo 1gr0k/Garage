@@ -65,6 +65,42 @@ actor FakeRecordRepository: ServiceRecordRepository, ServiceRecordEditing {
     }
 }
 
+actor FakeVehicleRepository: VehicleRepository {
+    private(set) var added: [Vehicle] = []
+    private(set) var updated: [Vehicle] = []
+    private(set) var deleted: [Vehicle.ID] = []
+    private var addError: (any Error)?
+    private var updateError: (any Error)?
+    private var deleteError: (any Error)?
+    private var addGate: Gate?
+    private var deleteGate: Gate?
+
+    func failAdd(with error: (any Error)?) { addError = error }
+    /// `add` будет ждать, пока тест не откроет барьер.
+    func holdAdd(at gate: Gate) { addGate = gate }
+    func failUpdate(with error: (any Error)?) { updateError = error }
+    func failDelete(with error: (any Error)?) { deleteError = error }
+    /// `delete` будет ждать, пока тест не откроет барьер.
+    func holdDelete(at gate: Gate) { deleteGate = gate }
+
+    func add(_ vehicle: Vehicle) async throws {
+        if let addGate { await addGate.arriveAndWait() }
+        if let addError { throw addError }
+        added.append(vehicle)
+    }
+
+    func update(_ vehicle: Vehicle) async throws {
+        if let updateError { throw updateError }
+        updated.append(vehicle)
+    }
+
+    func delete(id: Vehicle.ID) async throws {
+        deleted.append(id)
+        if let deleteGate { await deleteGate.arriveAndWait() }
+        if let deleteError { throw deleteError }
+    }
+}
+
 struct FakeReceiptPreparer: ReceiptImagePreparing {
     var transform: @Sendable (Data) async throws -> Data = { $0 }
 

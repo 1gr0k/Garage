@@ -18,6 +18,10 @@ final class AppDependencies {
     private let updateServiceRecord: UpdateServiceRecord
     private let recordEditing: any ServiceRecordEditing
     private let receiptPreparer: any ReceiptImagePreparing
+    private let addVehicle: AddVehicle
+    private let updateVehicle: UpdateVehicle
+    private let vehicleRepository: any VehicleRepository
+    private let currentYear: () -> Int
 
     init(
         container: ModelContainer,
@@ -40,6 +44,27 @@ final class AppDependencies {
         updateServiceRecord = UpdateServiceRecord(records: recordRepository)
         recordEditing = recordRepository
         receiptPreparer = ImageIOReceiptPreparer()
+        let vehicles = SwiftDataVehicleRepository(container: container)
+        addVehicle = AddVehicle(vehicles: vehicles)
+        updateVehicle = UpdateVehicle(vehicles: vehicles)
+        vehicleRepository = vehicles
+        currentYear = { Calendar.current.component(.year, from: Date()) }
+    }
+
+    func makeVehicleFormViewModel() -> VehicleFormViewModel {
+        VehicleFormViewModel(
+            mode: .add, addVehicle: addVehicle, updateVehicle: updateVehicle, currentYear: currentYear)
+    }
+
+    /// Форма правки. `recordsMileageKm` — пробег по записям для подсказки (считает вызывающий).
+    func makeVehicleFormViewModel(editing vehicle: Vehicle, recordsMileageKm: Int?) -> VehicleFormViewModel {
+        VehicleFormViewModel(
+            mode: .edit(original: vehicle), recordsMileageKm: recordsMileageKm,
+            addVehicle: addVehicle, updateVehicle: updateVehicle, currentYear: currentYear)
+    }
+
+    func makeVehicleListViewModel() -> VehicleListViewModel {
+        VehicleListViewModel(vehicles: vehicleRepository)
     }
 
     func makeServiceRecordFormViewModel(vehicleID: Vehicle.ID, currentMileageKm: Int) -> ServiceRecordFormViewModel {
@@ -60,7 +85,7 @@ final class AppDependencies {
     }
 
     func makeVehicleDetailViewModel() -> VehicleDetailViewModel {
-        VehicleDetailViewModel(records: recordEditing)
+        VehicleDetailViewModel(records: recordEditing, vehicles: vehicleRepository)
     }
 
     /// Боевой запуск: хранилище готовится вне главного потока, затем собираются зависимости.
