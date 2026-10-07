@@ -83,7 +83,8 @@ public struct PendingChange: Hashable, Sendable {
     public init(changeID: UUID, baseVersion: Int64?, modifiedAt: Date, operation: LocalOperation) {
         self.changeID = changeID
         self.baseVersion = baseVersion
-        self.modifiedAt = modifiedAt
+        // The wire format has millisecond precision; rounding here keeps the value stable across a round trip.
+        self.modifiedAt = Date(timeIntervalSince1970: (modifiedAt.timeIntervalSince1970 * 1000).rounded() / 1000)
         self.operation = operation
     }
 

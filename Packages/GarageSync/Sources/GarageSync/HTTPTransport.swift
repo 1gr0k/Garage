@@ -8,6 +8,7 @@ import FoundationNetworking
 public struct HTTPRequest: Sendable {
     public var method: String
     public var path: String
+    /// Item values are already percent-encoded.
     public var query: [URLQueryItem]
     public var headers: [String: String]
     public var body: Data?
@@ -54,7 +55,7 @@ public struct URLSessionHTTPTransport: HTTPTransport {
         var basePath = components.path
         while basePath.hasSuffix("/") { basePath.removeLast() }
         components.path = basePath + request.path
-        components.queryItems = request.query.isEmpty ? nil : request.query
+        components.percentEncodedQueryItems = request.query.isEmpty ? nil : request.query
         guard let url = components.url else { throw SyncError.malformedResponse }
 
         var urlRequest = URLRequest(url: url)

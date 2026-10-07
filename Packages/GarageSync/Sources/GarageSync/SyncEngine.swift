@@ -10,6 +10,8 @@ public struct SyncReport: Sendable {
     public var pulled = 0
     /// Server changes that could not be mapped to the domain and were left out.
     public var skipped: [(ref: EntityRef, error: any Error)] = []
+    /// Edits still queued after the push rounds ran out (they go out on the next sync).
+    public var stillPending: [PendingChange] = []
 
     public init() {}
 }
@@ -70,6 +72,7 @@ public actor SyncEngine {
             }
             if !rebased { return }
         }
+        report.stillPending = try await store.pendingChanges()
     }
 
     /// Returns `true` when the change stays queued on a new base version.
@@ -100,7 +103,10 @@ public actor SyncEngine {
                 serverWins = !(change.modifiedAt > current.modifiedAt)
             }
             if serverWins {
-                try await applyServerChange(current, for: ref, report: &report)
+                if try await !applyServerChange(current, for: ref, report: &report) {
+                    // The server state cannot be represented locally; retrying would conflict forever.
+                    try await store.discard(changeID: change.changeID)
+                }
                 return false
             }
             try await store.rebase(changeID: change.changeID, onto: current.version)
@@ -126,15 +132,19 @@ public actor SyncEngine {
     }
 
     /// Applies a server change; if it cannot be mapped the local edit stays queued and the failure is reported.
-    private func applyServerChange(_ change: ServerChange, for ref: EntityRef, report: inout SyncReport) async throws {
+    @discardableResult
+    private func applyServerChange(
+        _ change: ServerChange, for ref: EntityRef, report: inout SyncReport
+    ) async throws -> Bool {
         let operation: LocalOperation
         do {
             operation = try LocalOperation(change.operation)
         } catch {
             report.skipped.append((ref, error))
-            return
+            return false
         }
         try await store.apply(RemoteChange(version: change.version, operation: operation), for: ref)
+        return true
     }
 
     // MARK: Pull
@@ -165,6 +175,12 @@ public actor SyncEngine {
         if let known = try await store.version(of: ref), known >= change.version { return }
 
         if let local = try await store.pendingChange(for: ref), !change.operation.isDelete {
+            if local.pushChange.operation == change.operation {
+                // Our own edit came back (its push response was lost): nothing to resolve.
+                try await store.markApplied(changeID: local.changeID, version: change.version)
+                report.pushed += 1
+                return
+            }
             report.conflictsResolved += 1
             if local.operation.isDelete || local.modifiedAt > change.modifiedAt {
                 try await store.rebase(changeID: local.changeID, onto: change.version)

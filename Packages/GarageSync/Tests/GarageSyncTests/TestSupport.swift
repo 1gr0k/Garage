@@ -11,6 +11,8 @@ actor FakeHTTPTransport: HTTPTransport {
     enum Step: Sendable {
         case respond(Int, Data)
         case fail(any Error)
+        /// Runs a side effect (e.g. a local edit made while the sync is in flight), then the step.
+        indirect case before(@Sendable () async -> Void, Step)
 
         static func golden(_ name: String, status: Int = 200) throws -> Step {
             .respond(status, try GoldenExamples.data(name))
@@ -35,9 +37,16 @@ actor FakeHTTPTransport: HTTPTransport {
     func send(_ request: HTTPRequest) async throws -> HTTPResponse {
         requests.append(request)
         guard !steps.isEmpty else { throw TestError.noScenario }
-        switch steps.removeFirst() {
+        return try await run(steps.removeFirst())
+    }
+
+    private func run(_ step: Step) async throws -> HTTPResponse {
+        switch step {
         case .respond(let status, let body): return HTTPResponse(status: status, body: body)
         case .fail(let error): throw error
+        case .before(let effect, let next):
+            await effect()
+            return try await run(next)
         }
     }
 }

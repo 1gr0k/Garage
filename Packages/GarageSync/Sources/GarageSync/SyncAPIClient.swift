@@ -20,7 +20,8 @@ public struct SyncAPIClient: Sendable {
 
     public func pull(after cursor: String?, limit: Int) async throws -> PullResponse {
         var query: [URLQueryItem] = []
-        if let cursor { query.append(URLQueryItem(name: APIPath.afterQuery, value: cursor)) }
+        // Values are percent-encoded here (URLComponents leaves `+` and `&` alone).
+        if let cursor { query.append(URLQueryItem(name: APIPath.afterQuery, value: Self.encode(cursor))) }
         query.append(URLQueryItem(name: APIPath.limitQuery, value: String(limit)))
         let response = try await send(HTTPRequest(method: "GET", path: APIPath.changes, query: query))
         return try APICoding.makeDecoder().decode(PullResponse.self, from: response.body)
@@ -32,6 +33,13 @@ public struct SyncAPIClient: Sendable {
             HTTPRequest(
                 method: "POST", path: APIPath.changes, headers: ["Content-Type": "application/json"], body: body))
         return try APICoding.makeDecoder().decode(PushResponse.self, from: response.body)
+    }
+
+    private static let unreserved = CharacterSet(
+        charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+
+    private static func encode(_ value: String) -> String {
+        value.addingPercentEncoding(withAllowedCharacters: unreserved) ?? value
     }
 
     private func send(_ request: HTTPRequest) async throws -> HTTPResponse {
