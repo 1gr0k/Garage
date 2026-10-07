@@ -171,3 +171,23 @@ import VaporTesting
         #expect(try client.apiError(response).code == .notFound)
     }
 }
+
+/// Сборки мусора для blob'ов нет (`docs/api.md`, «Вне скоупа»): каскад удаляет запись, но не её чек.
+@Test func receiptBlobOutlivesCascadedRecord() async throws {
+    try await withTestApp { _, client in
+        #expect(try await client.putReceipt(Fixture.jpeg).status == .created)
+        let sha = Hashing.sha256Hex(Fixture.jpeg)
+        let vehicle = Fixture.vehicle()
+        let record = Fixture.record(
+            vehicleID: vehicle.id, receipt: ReceiptRefDTO(sha256: sha, byteCount: Fixture.jpeg.count))
+        _ = try await client.push([Fixture.upsert(vehicle), Fixture.upsert(record)]).map { try $0.appliedVersion() }
+
+        _ = try await client.push(Fixture.delete(.vehicle, vehicle.id)).appliedVersion()
+        let cascaded = try await client.pull(after: "3")
+        #expect(cascaded.changes.map(\.operation) == [.delete(.serviceRecord, id: record.id)])
+
+        let response = try await client.raw(.GET, APIPath.receipt(sha256: sha))
+        #expect(response.status == .ok)
+        #expect(Array(response.body.readableBytesView) == Fixture.jpeg)
+    }
+}

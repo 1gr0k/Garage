@@ -30,6 +30,16 @@ public protocol ServiceRecordEditing: Sendable {
     func delete(id: ServiceRecord.ID) async throws
 }
 
+/// Хранилище техники. Каскад на записи и очередь синхронизации — забота адаптера.
+public protocol VehicleRepository: Sendable {
+    func add(_ vehicle: Vehicle) async throws
+    /// Заменяет поля машины с тем же `id`.
+    /// - Throws: `RepositoryError.vehicleNotFound`, если машины нет.
+    func update(_ vehicle: Vehicle) async throws
+    /// Удаляет машину вместе с её записями, частями и чеками. Машины нет — не ошибка.
+    func delete(id: Vehicle.ID) async throws
+}
+
 /// Подготовка фото чека к хранению (уменьшение, перекодирование).
 public protocol ReceiptImagePreparing: Sendable {
     func prepare(_ data: Data) async throws -> Data

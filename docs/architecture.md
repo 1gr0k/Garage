@@ -34,6 +34,12 @@ Use case заводится **только если есть правило ил
 - `UpdateServiceRecord` — use case: то же правило для правки (`id` и `vehicleID` берутся из исходной
   записи) + «ничего не изменилось → порт не вызывается»; сохранение через `ServiceRecordEditing`.
 - `ServiceRecordEditing.delete` — порт без use case: правил у удаления нет, подтверждение — это UI.
+- `AddVehicle` / `UpdateVehicle` — use case'ы: черновик машины проверяется `VehicleDraft.makeVehicle`
+  (непустые марка и модель, год `1900...currentYear + 1`, пробег по правилам `parseMileage`;
+  `currentYear` — параметр), в правке сохраняется `id`, «ничего не изменилось → порт не вызывается»;
+  сохранение через `VehicleRepository`.
+- `VehicleRepository.delete` — порт без use case: каскад на записи делают хранилище и сервер,
+  подтверждение — это UI (см. «Удаление техники»).
 - `RegisterDevice`, `SyncNow`, `ForgetDevice` — use case'ы: проверка адреса (`ServerURLPolicy`),
   «секрет не сохраняется», «нет регистрации → `SyncFailure.notRegistered`», порядок «сброс, потом
   удаление токена».
@@ -133,6 +139,27 @@ ViewModel (`makeServiceRecordFormViewModel(vehicleID:currentMileageKm:)`) и о�
   (`pendingDeletion`, `delete(id:)`), из формы — `ServiceRecordFormViewModel.delete()`.
 - Вью: строка записи открывает форму правки (`editingSnapshot()` из `DisplayMapping`); свайп «Удалить» —
   без `role: .destructive`, иначе List уберёт строку до подтверждения.
+
+## Удаление техники
+
+План: `docs/plans/stage-10-vehicles-crud.md` (раздел «Каскадное удаление»). Часть A (GarageCore,
+тесты GarageSync и сервера) сделана; хранилище и UI — часть B.
+
+- В очередь ставится **только** `delete(.vehicle, id)`, без delete каждой записи: полноту и атомарность
+  каскада даёт сервер (`ChangeWriter.delete` в одной транзакции ставит tombstones всем живым записям
+  машины, включая те, которых устройство не видело). Delete машины ставится всегда, даже без
+  `SyncVersionEntity` — довод тот же, что у удаления записи.
+- В том же сохранении из очереди снимаются **pending-upsert'ы записей машины**: отправленные после
+  `delete(V)`, они получили бы `rejected/vehicleNotFound` (новая запись) или `conflict/deleted`, а чек
+  попытался бы загрузиться для записи, которой уже нет. Pending-delete записей остаются: delete
+  не отклоняется, а каскад пропускает уже удалённые записи.
+- То же действует при удалении машины с сервера: контракт `SyncStore.apply` — удаление машины удаляет
+  её записи и pending-upsert'ы этих записей (`InMemorySyncStore` в тестах GarageSync повторяет это).
+  Код `SyncEngine` не меняется.
+- Запись, добавленная к машине, которую уже удалили на другом устройстве, теряется («удаление
+  побеждает»): push даёт `rejected/vehicleNotFound`, движок удаляет запись локально, pull приносит
+  tombstone машины. Демо-машины с фиксированными UUID по той же причине не воскресают на новом
+  устройстве (`conflict/deleted`).
 
 ## Что проверяет `scripts/check.sh --only architecture`
 

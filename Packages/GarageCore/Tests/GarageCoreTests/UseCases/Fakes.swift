@@ -36,6 +36,33 @@ final class FakeRecordEditor: ServiceRecordEditing, @unchecked Sendable {
     }
 }
 
+final class FakeVehicleRepository: VehicleRepository, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _added: [Vehicle] = []
+    private var _updated: [Vehicle] = []
+    private var _deleted: [UUID] = []
+    var error: (any Error)?
+
+    var added: [Vehicle] { lock.withLock { _added } }
+    var updated: [Vehicle] { lock.withLock { _updated } }
+    var deleted: [UUID] { lock.withLock { _deleted } }
+
+    func add(_ vehicle: Vehicle) async throws {
+        if let error { throw error }
+        lock.withLock { _added.append(vehicle) }
+    }
+
+    func update(_ vehicle: Vehicle) async throws {
+        if let error { throw error }
+        lock.withLock { _updated.append(vehicle) }
+    }
+
+    func delete(id: Vehicle.ID) async throws {
+        if let error { throw error }
+        lock.withLock { _deleted.append(id) }
+    }
+}
+
 final class FakeCredentials: SyncCredentialsStore, @unchecked Sendable {
     private let lock = NSLock()
     private var token: String?

@@ -179,7 +179,7 @@ public struct ServiceRecordDraft: Hashable, Sendable {
     }
 
     /// Parses a whole number, ignoring all whitespace (including U+00A0 and U+202F).
-    private static func parseInteger(_ text: String) -> Result<Int, FieldError> {
+    static func parseInteger(_ text: String) -> Result<Int, FieldError> {
         let compact = text.filter { !$0.isWhitespace }
         guard !compact.isEmpty else { return .failure(.required) }
         guard let value = Int(compact) else { return .failure(.notANumber) }
