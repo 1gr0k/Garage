@@ -10,9 +10,25 @@ public enum APICoding {
         encoder.outputFormatting = [.sortedKeys]
         encoder.dateEncodingStrategy = .custom { date, encoder in
             var container = encoder.singleValueContainer()
-            try container.encode(date.formatted(Date.ISO8601FormatStyle(includingFractionalSeconds: true)))
+            try container.encode(isoString(date))
         }
         return encoder
+    }
+
+    /// ISO 8601 UTC with milliseconds; the date is rounded to the nearest millisecond
+    /// (the formatter itself would truncate), so the value survives an encode/decode round trip.
+    private static func isoString(_ date: Date) -> String {
+        let totalMilliseconds = Int64((date.timeIntervalSince1970 * 1000).rounded())
+        var seconds = totalMilliseconds / 1000
+        var milliseconds = totalMilliseconds % 1000
+        if milliseconds < 0 {
+            milliseconds += 1000
+            seconds -= 1
+        }
+        let whole = Date(timeIntervalSince1970: TimeInterval(seconds))
+            .formatted(Date.ISO8601FormatStyle(includingFractionalSeconds: false))
+        let fraction = String(milliseconds)
+        return String(whole.dropLast()) + "." + String(repeating: "0", count: 3 - fraction.count) + fraction + "Z"
     }
 
     public static func makeDecoder() -> JSONDecoder {

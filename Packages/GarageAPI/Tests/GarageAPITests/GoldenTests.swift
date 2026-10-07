@@ -174,6 +174,26 @@ private let goldenCases: [GoldenCase] = [
         #expect(String(decoding: data, as: UTF8.self).contains("\"2026-10-07T09:30:00.000Z\""))
     }
 
+    @Test func dateIsRoundedToNearestMillisecondAndRoundTripsStably() throws {
+        let base = date("2026-10-07T09:30:00.000Z")
+        let cases: [(fraction: Double, expected: String)] = [
+            (0.1236, "2026-10-07T09:30:00.124Z"),
+            (0.1234, "2026-10-07T09:30:00.123Z"),
+            (0.9996, "2026-10-07T09:30:01.000Z"),
+        ]
+        for (fraction, expected) in cases {
+            let change = ServerChange(
+                version: 1, modifiedAt: base.addingTimeInterval(fraction),
+                operation: .delete(.vehicle, id: vehicleID))
+            let first = try APICoding.makeEncoder().encode(change)
+            #expect(String(decoding: first, as: UTF8.self).contains("\"\(expected)\""), "for \(fraction)")
+
+            let decoded = try APICoding.makeDecoder().decode(ServerChange.self, from: first)
+            let second = try APICoding.makeEncoder().encode(decoded)
+            #expect(first == second, "encode(decode(encode)) differs for \(fraction)")
+        }
+    }
+
     @Test func unknownOpFails() {
         #expect(throws: DecodingError.self) {
             try decode(
