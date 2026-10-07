@@ -37,6 +37,27 @@ private struct Device {
     }
 }
 
+/// Транспорт, который перед первым push вызывает `beforePush`: имитирует правку, сделанную, пока запрос в пути.
+private actor DeleteDuringPushTransport: HTTPTransport {
+    private let server: FakeSyncServer
+    private let beforePush: @Sendable () -> Void
+    private var fired = false
+
+    init(server: FakeSyncServer, beforePush: @escaping @Sendable () -> Void) {
+        self.server = server
+        self.beforePush = beforePush
+    }
+
+    func send(_ request: HTTPRequest) async throws -> HTTPResponse {
+        let response = try await server.send(request)
+        if request.method == "POST", !fired {
+            fired = true
+            beforePush()
+        }
+        return response
+    }
+}
+
 @Suite struct SyncEndToEndTests {
     @Test func localEditsReachTheServerAndAnotherDeviceWithReceipt() async throws {
         let server = FakeSyncServer()
@@ -150,7 +171,7 @@ private struct Device {
         #expect(try await first.store.pendingChanges().isEmpty)
     }
 
-    @Test func recordDeletedBeforeFirstSyncNeverReachesServer() async throws {
+    @Test func recordDeletedBeforeFirstSyncEndsDeletedOnServer() async throws {
         let server = FakeSyncServer()
         let device = try Device()
         let vehicle = Vehicle.samples[2]
@@ -159,12 +180,35 @@ private struct Device {
         try ServiceLog.add(record, receiptImage: Data([1]), toVehicleWithID: vehicle.id, in: device.container)
 
         try ServiceLog.delete(id: record.id, in: device.container)
-        let report = try await device.sync(with: server)
+        _ = try await device.sync(with: server)
+        _ = try await device.sync(with: server)
 
-        #expect(report.pushed == 1)
         #expect(await server.liveCount(.vehicle) == 1)
         #expect(await server.liveCount(.serviceRecord) == 0)
         #expect(await server.blobs.isEmpty)
+        #expect(try device.records().isEmpty)
+        #expect(try await device.store.pendingChanges().isEmpty)
+    }
+
+    @Test func recordDeletedWhilePushIsInFlightIsNotResurrected() async throws {
+        let server = FakeSyncServer()
+        let device = try Device()
+        let vehicle = Vehicle.samples[2]
+        try VehicleLog.add(vehicle, in: device.container)
+        let record = try makeSyncRecord(for: vehicle)
+        try ServiceLog.add(record, toVehicleWithID: vehicle.id, in: device.container)
+        let transport = DeleteDuringPushTransport(server: server) {
+            try? ServiceLog.delete(id: record.id, in: device.container)
+        }
+        let engine = SyncEngine(
+            store: device.store, client: SyncAPIClient(transport: transport, token: "t"), receipts: device.store)
+
+        _ = try await engine.sync()
+        _ = try await engine.sync()
+        _ = try await engine.sync()
+
+        #expect(try device.records().isEmpty)
+        #expect(await server.liveCount(.serviceRecord) == 0)
         #expect(try await device.store.pendingChanges().isEmpty)
     }
 

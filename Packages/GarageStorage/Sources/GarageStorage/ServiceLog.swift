@@ -87,9 +87,6 @@ public enum ServiceLog {
 
     /// Удаляет запись (части — каскадом, чек — вместе с сущностью) и ставит delete в очередь, в одном
     /// сохранении. Записи нет — не ошибка.
-    ///
-    /// Запись, которой нет на сервере (нет `SyncVersionEntity`), в очередь delete не попадает: из очереди
-    /// убирается её pending-правка, и на сервер ничего не уходит.
     public static func delete(id: ServiceRecord.ID, in container: ModelContainer) throws {
         try delete(id: id, in: container) { try $0.save() }
     }
@@ -103,12 +100,9 @@ public enum ServiceLog {
         let context = ModelContext(container)
         context.autosaveEnabled = false
         guard let entity = try recordEntity(id: id, in: context) else { return }
-        let ref = EntityRef(kind: .serviceRecord, id: id)
-        if try SyncState.versionEntity(for: ref, in: context) != nil {
-            try SyncQueue.enqueueDelete(ref, in: context)
-        } else if let pending = try SyncState.pendingEntity(for: ref, in: context) {
-            context.delete(pending)
-        }
+        // Delete ставится всегда, даже без `SyncVersionEntity`: её отсутствие не значит «на сервере записи нет»
+        // (push в полёте, сброс версий при смене схемы или «Забыть устройство»). Pending-правка схлопывается в delete.
+        try SyncQueue.enqueueDelete(EntityRef(kind: .serviceRecord, id: id), in: context)
         context.delete(entity)
         try save(context)
     }

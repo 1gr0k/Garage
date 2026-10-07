@@ -121,9 +121,11 @@ ViewModel (`makeServiceRecordFormViewModel(vehicleID:currentMileageKm:)`) и о�
 - Черновик: `ServiceRecordDraft(record:decimalSeparator:)` для формы правки (`Money.DecimalSeparator`:
   ViewModel выбирает `.comma`, только если в локали `,`, иначе `.period`), `makeRecord(id:vehicleID:)`.
 - Адаптер: `ServiceLog.update` — `update(from:)` и `SyncQueue.enqueueUpsert`; `ServiceLog.delete` —
-  `SyncQueue.enqueueDelete` в том же сохранении, что и `context.delete`. Запись, у которой нет серверной
-  версии (`SyncVersionEntity`; ни разу не синхронизировалась), в очередь delete не попадает: из очереди
-  убирается её pending-правка. Чек меняется только через `setReceiptImage`. Если тип записи сменили,
+  `SyncQueue.enqueueDelete` в том же сохранении, что и `context.delete`, **всегда**: pending-правка
+  записи схлопывается в delete. «Нет `SyncVersionEntity`» не значит «на сервере записи нет»: push может
+  быть в полёте (ответ не найдёт pending по `changeID` и версию не запишет, а pull вернёт запись),
+  версии стираются при смене схемы и в «Забыть устройство». Пропустить delete — значит потерять
+  удаление; цена лишнего delete — один tombstone (сервер принимает delete несуществующего id). Чек меняется только через `setReceiptImage`. Если тип записи сменили,
   `rawServiceType` сбрасывается. Модель SwiftData не менялась, `schemaVersion` не растёт.
 - ViewModel: форма переиспользует `ServiceRecordFormViewModel` с режимом правки (`Mode.edit`);
   состояние чека — одно поле `receiptSelection`, `ReceiptChange` вычисляется из него. Разделитель

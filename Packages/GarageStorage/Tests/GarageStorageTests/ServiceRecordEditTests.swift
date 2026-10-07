@@ -191,7 +191,7 @@ private func edited(_ record: ServiceRecord, notes: String, parts: [Part]? = nil
         #expect(pending[0].operation.isDelete)
     }
 
-    @Test func deleteOfNeverSyncedRecordLeavesNoQueueEntryForIt() async throws {
+    @Test func deleteOfNeverSyncedRecordCollapsesPendingUpsertIntoDelete() async throws {
         let (container, vehicle, record) = try makeStore(synced: false, receipt: Data([1]))
         #expect(try await pendingChanges(container).count == 2)
 
@@ -199,7 +199,12 @@ private func edited(_ record: ServiceRecord, notes: String, parts: [Part]? = nil
 
         #expect(try storedRecord(record.id, in: container) == nil)
         let pending = try await pendingChanges(container)
-        #expect(pending.map(\.operation.ref) == [EntityRef(kind: .vehicle, id: vehicle.id)])
+        #expect(
+            pending.map(\.operation.ref) == [
+                EntityRef(kind: .vehicle, id: vehicle.id), EntityRef(kind: .serviceRecord, id: record.id),
+            ])
+        #expect(pending[1].baseVersion == nil)
+        #expect(pending[1].operation.isDelete)
     }
 
     @Test func deleteOfMissingRecordIsQuietNoOp() async throws {
