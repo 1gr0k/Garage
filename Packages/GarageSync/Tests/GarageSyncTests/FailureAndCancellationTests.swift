@@ -101,18 +101,77 @@ private actor HangingTransport: HTTPTransport {
         #expect(await store.cursor() == "5")
     }
 
-    @Test func cancelBetweenPagesStopsBeforeNextRequest() async throws {
+    @Test(.timeLimit(.minutes(1)))
+    func cancelBetweenPagesStopsBeforeNextRequest() async throws {
         let store = InMemorySyncStore()
-        let page = PullResponse(changes: [], cursor: "1", hasMore: true)
-        let transport = FakeHTTPTransport([try .json(page)])
+        let gate = Gate()
+        // Вторая страница отвечает успешно: без проверки отмены в цикле pull синхронизация
+        // завершилась бы без ошибки, и тест гарантированно упал бы.
+        let transport = FakeHTTPTransport([
+            .before(
+                { await gate.arriveAndWait() },
+                try .json(PullResponse(changes: [], cursor: "1", hasMore: true))),
+            try .json(emptyPull(cursor: "2")),
+        ])
         let engine = makeEngine(store, transport)
 
         let task = Task { try await engine.sync() }
-        // Сначала задача успеет дойти до первого запроса; отмена не должна оставить сдвинутый курсор
-        // после пропущенной страницы, а новых запросов после отмены быть не должно.
+        // Отмена приходит строго пока первый запрос в полёте, до применения первой страницы.
+        await gate.waitForArrival()
         task.cancel()
+        await gate.open()
 
         await #expect(throws: CancellationError.self) { try await task.value }
-        #expect(await transport.requests.count <= 1)
+        #expect(await transport.requests.count == 1)
+        // Первая страница применена, вторая не запрошена.
+        #expect(await store.cursor() == "1")
+    }
+
+    @Test(.timeLimit(.minutes(1)))
+    func cancelOfOneCallerCancelsSharedRun() async throws {
+        let store = InMemorySyncStore()
+        let gate = Gate()
+        let transport = FakeHTTPTransport([
+            .before({ await gate.arriveAndWait() }, try .json(emptyPull(cursor: "1")))
+        ])
+        let engine = makeEngine(store, transport)
+
+        let first = Task { try await engine.sync() }
+        await gate.waitForArrival()
+        let second = Task { try await engine.sync() }
+        // Второй вызов присоединяется к общему прогону (или отменён ещё до этого): итог один и тот же.
+        second.cancel()
+        await gate.open()
+
+        await #expect(throws: CancellationError.self) { try await second.value }
+        await #expect(throws: CancellationError.self) { try await first.value }
+        #expect(await transport.requests.count == 1)
+    }
+}
+
+/// Двусторонний барьер: тест ждёт, пока запрос «придёт», и сам решает, когда его отпустить.
+private actor Gate {
+    private var arrived = false
+    private var opened = false
+    private var arrivalWaiter: CheckedContinuation<Void, Never>?
+    private var releaseWaiter: CheckedContinuation<Void, Never>?
+
+    func arriveAndWait() async {
+        arrived = true
+        arrivalWaiter?.resume()
+        arrivalWaiter = nil
+        if opened { return }
+        await withCheckedContinuation { releaseWaiter = $0 }
+    }
+
+    func waitForArrival() async {
+        if arrived { return }
+        await withCheckedContinuation { arrivalWaiter = $0 }
+    }
+
+    func open() {
+        opened = true
+        releaseWaiter?.resume()
+        releaseWaiter = nil
     }
 }

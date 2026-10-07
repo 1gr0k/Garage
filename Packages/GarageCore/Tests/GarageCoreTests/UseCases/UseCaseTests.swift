@@ -154,3 +154,15 @@ func registerAcceptsAllowedURLsAndStoresCredentials(text: String) async throws {
     #expect(credentials.readServerURL() == url)
     #expect(service.resetCount == 1)
 }
+
+@Test func forgetDeviceKeepsTokenWhenResetFails() async throws {
+    let service = FakeSyncService()
+    service.resetError = TestFailure()
+    let credentials = FakeCredentials(token: "t", serverURL: URL(string: "https://example.com"))
+
+    await #expect(throws: TestFailure.self) {
+        try await ForgetDevice(service: service, credentials: credentials).execute()
+    }
+
+    #expect(credentials.readToken() == "t")
+}

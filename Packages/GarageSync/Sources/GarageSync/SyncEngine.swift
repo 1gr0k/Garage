@@ -46,12 +46,18 @@ public actor SyncEngine {
     }
 
     /// Concurrent callers share one run: the actor is reentrant, so overlapping runs would push the same batch twice.
+    /// Отмена любого из вызывающих отменяет общий прогон (и для остальных тоже): он живёт в отдельном `Task`.
     public func sync() async throws -> SyncReport {
-        if let running = inFlight { return try await running.value }
+        if let running = inFlight {
+            return try await withTaskCancellationHandler {
+                try await running.value
+            } onCancel: {
+                running.cancel()
+            }
+        }
         let task = Task { try await self.run() }
         inFlight = task
         defer { inFlight = nil }
-        // Отмена вызывающей задачи отменяет и общий прогон: он живёт в отдельном `Task`.
         return try await withTaskCancellationHandler {
             try await task.value
         } onCancel: {

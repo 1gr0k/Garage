@@ -87,7 +87,8 @@ public struct ForgetDevice: Sendable {
     }
 
     public func execute() async throws {
-        credentials.deleteToken()
+        // Сначала сброс: если он упадёт, устройство остаётся зарегистрированным и «Забыть» можно повторить.
         try await service.resetSyncState()
+        credentials.deleteToken()
     }
 }

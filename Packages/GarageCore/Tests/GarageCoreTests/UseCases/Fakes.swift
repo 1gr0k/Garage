@@ -66,6 +66,7 @@ final class FakeSyncService: SyncService, @unchecked Sendable {
     private var _resetCount = 0
     var summary = SyncSummary()
     var error: (any Error)?
+    var resetError: (any Error)?
 
     var syncCount: Int { lock.withLock { _syncCount } }
     var resetCount: Int { lock.withLock { _resetCount } }
@@ -80,6 +81,7 @@ final class FakeSyncService: SyncService, @unchecked Sendable {
 
     func resetSyncState() async throws {
         lock.withLock { _resetCount += 1 }
+        if let resetError { throw resetError }
     }
 }
 

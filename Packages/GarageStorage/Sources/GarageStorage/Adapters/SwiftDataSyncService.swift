@@ -21,7 +21,29 @@ public actor SwiftDataSyncService: SyncService {
         self.makeTransport = makeTransport
     }
 
+    /// Общий прогон: актор реентерабелен, поэтому без него два параллельных `sync()` запушили бы один батч дважды.
+    private var inFlight: Task<SyncSummary, any Error>?
+
+    /// Параллельные вызовы делят один прогон; отмена любого из них отменяет его целиком (как в `SyncEngine`).
     public func sync() async throws -> SyncSummary {
+        if let running = inFlight {
+            return try await withTaskCancellationHandler {
+                try await running.value
+            } onCancel: {
+                running.cancel()
+            }
+        }
+        let task = Task { try await self.performSync() }
+        inFlight = task
+        defer { inFlight = nil }
+        return try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            task.cancel()
+        }
+    }
+
+    private func performSync() async throws -> SyncSummary {
         guard let token = credentials.readToken(), let url = credentials.readServerURL() else {
             throw SyncFailure.notRegistered
         }
@@ -49,6 +71,11 @@ public actor SwiftDataSyncService: SyncService {
     }
 
     public func resetSyncState() async throws {
+        // Идущий прогон записал бы курсор и версии поверх сброса: сначала отменяем и дожидаемся его.
+        if let running = inFlight {
+            running.cancel()
+            _ = try? await running.value
+        }
         try SyncSupport.resetSyncState(container)
     }
 }

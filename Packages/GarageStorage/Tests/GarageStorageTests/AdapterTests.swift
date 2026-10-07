@@ -27,10 +27,47 @@ private final class MemoryCredentials: SyncCredentialsStore, @unchecked Sendable
 }
 
 /// Транспорт, который «зависает» до отмены.
-private struct HangingTransport: HTTPTransport {
+/// Сообщает, что запрос ушёл в транспорт, чтобы тест отменял задачу строго во время запроса.
+private actor HangingTransport: HTTPTransport {
+    private var started: CheckedContinuation<Void, Never>?
+    private var didStart = false
+
     func send(_ request: HTTPRequest) async throws -> HTTPResponse {
+        didStart = true
+        started?.resume()
+        started = nil
         try await Task.sleep(for: .seconds(60))
         throw URLError(.timedOut)
+    }
+
+    func waitUntilStarted() async {
+        if didStart { return }
+        await withCheckedContinuation { started = $0 }
+    }
+}
+
+/// Как URLSession при отмене: бросает `URLError.cancelled`, а не `CancellationError`.
+private actor URLCancelledTransport: HTTPTransport {
+    private var started: CheckedContinuation<Void, Never>?
+    private var didStart = false
+    private var release: CheckedContinuation<Void, Never>?
+
+    func send(_ request: HTTPRequest) async throws -> HTTPResponse {
+        didStart = true
+        started?.resume()
+        started = nil
+        await withCheckedContinuation { release = $0 }
+        throw URLError(.cancelled)
+    }
+
+    func waitUntilStarted() async {
+        if didStart { return }
+        await withCheckedContinuation { started = $0 }
+    }
+
+    func finish() {
+        release?.resume()
+        release = nil
     }
 }
 
@@ -113,14 +150,29 @@ private struct HangingTransport: HTTPTransport {
 
     @Test func cancellationDuringHungRequestThrowsCancellationError() async throws {
         let container = try GarageStore.makeContainer(inMemory: true)
-        let service = makeService(container, transport: HangingTransport())
+        let transport = HangingTransport()
+        let service = makeService(container, transport: transport)
 
         let task = Task { try await service.sync() }
-        try await Task.sleep(for: .milliseconds(200))
+        await transport.waitUntilStarted()
         task.cancel()
 
         await #expect(throws: CancellationError.self) { try await task.value }
         #expect(try await service.status().lastSyncAt == nil)
+    }
+
+    @Test(.timeLimit(.minutes(1)))
+    func urlErrorCancelledOnCancelledTaskMapsToCancellationError() async throws {
+        let container = try GarageStore.makeContainer(inMemory: true)
+        let transport = URLCancelledTransport()
+        let service = makeService(container, transport: transport)
+
+        let task = Task { try await service.sync() }
+        await transport.waitUntilStarted()
+        task.cancel()
+        await transport.finish()
+
+        await #expect(throws: CancellationError.self) { try await task.value }
     }
 }
 
