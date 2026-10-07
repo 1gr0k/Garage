@@ -10,25 +10,27 @@ private func makeDefaults() -> UserDefaults {
 }
 
 @Test func seedingRunsOnce() throws {
-    let context = ModelContext(try GarageStore.makeContainer(inMemory: true))
+    let container = try GarageStore.makeContainer(inMemory: true)
+    let context = ModelContext(container)
     let defaults = makeDefaults()
 
-    try SampleSeeder.seedIfNeeded(context, defaults: defaults)
+    try SampleSeeder.seedIfNeeded(container, defaults: defaults)
     #expect(try context.fetchCount(FetchDescriptor<VehicleEntity>()) == 4)
     #expect(defaults.bool(forKey: SampleSeeder.didSeedKey))
 
-    try SampleSeeder.seedIfNeeded(context, defaults: defaults)
+    try SampleSeeder.seedIfNeeded(container, defaults: defaults)
     #expect(try context.fetchCount(FetchDescriptor<VehicleEntity>()) == 4)
 }
 
 @Test func seedingDoesNotRepeatAfterDeletingAll() throws {
-    let context = ModelContext(try GarageStore.makeContainer(inMemory: true))
+    let container = try GarageStore.makeContainer(inMemory: true)
+    let context = ModelContext(container)
     let defaults = makeDefaults()
-    try SampleSeeder.seedIfNeeded(context, defaults: defaults)
+    try SampleSeeder.seedIfNeeded(container, defaults: defaults)
 
     try context.delete(model: VehicleEntity.self)
     try context.save()
-    try SampleSeeder.seedIfNeeded(context, defaults: defaults)
+    try SampleSeeder.seedIfNeeded(container, defaults: defaults)
 
     #expect(try context.fetchCount(FetchDescriptor<VehicleEntity>()) == 0)
 }

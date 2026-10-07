@@ -48,8 +48,9 @@ section_ios() {
     dest=$(sim_destination)
     echo "==> xcodebuild test GarageStorage ($dest)"
     (cd Packages/GarageStorage && xcodebuild test -scheme GarageStorage -destination "$dest")
-    echo "==> xcodebuild build Garage"
-    xcodebuild -project Garage.xcodeproj -scheme Garage -destination 'generic/platform=iOS Simulator' build
+    # Схема GarageTests собирает хост Garage.app, так что отдельная сборка приложения не нужна.
+    echo "==> xcodebuild test GarageTests ($dest)"
+    xcodebuild test -project Garage.xcodeproj -scheme GarageTests -destination "$dest"
 }
 
 # Lists catalog keys that are stale, lack `ru`, have a `ru` state other than

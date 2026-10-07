@@ -51,7 +51,12 @@ public actor SyncEngine {
         let task = Task { try await self.run() }
         inFlight = task
         defer { inFlight = nil }
-        return try await task.value
+        // Отмена вызывающей задачи отменяет и общий прогон: он живёт в отдельном `Task`.
+        return try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            task.cancel()
+        }
     }
 
     private var inFlight: Task<SyncReport, any Error>?
@@ -67,7 +72,9 @@ public actor SyncEngine {
         uploadedReceipts = []
         failedReceipts = []
         try await push(&report)
+        try Task.checkCancellation()
         try await pull(&report)
+        try Task.checkCancellation()
         try await downloadMissingReceipts(&report)
         return report
     }
@@ -78,6 +85,7 @@ public actor SyncEngine {
         var held = false
         var settled = false
         for _ in 0..<Self.maxPushRounds {
+            try Task.checkCancellation()
             let queued = try await store.pendingChanges()
             guard !queued.isEmpty else { return }
             let pending = try await uploadReceipts(for: queued, report: &report)
@@ -88,6 +96,7 @@ public actor SyncEngine {
             }
             var rebased = false
             for start in stride(from: 0, to: pending.count, by: APIPath.maxPushBatch) {
+                try Task.checkCancellation()
                 let batch = Array(pending[start..<min(start + APIPath.maxPushBatch, pending.count)])
                 let response = try await client.push(PushRequest(changes: batch.map(\.pushChange)))
                 guard response.results.count == batch.count,
@@ -157,6 +166,7 @@ public actor SyncEngine {
         }
         var seen: Set<String> = []
         for ref in missing where seen.insert(ref.sha256).inserted {
+            try Task.checkCancellation()
             do {
                 let data = try await client.downloadReceipt(sha256: ref.sha256)
                 try await receipts.storeReceipt(data, for: ref)
@@ -251,6 +261,7 @@ public actor SyncEngine {
     private func pull(_ report: inout SyncReport) async throws {
         var cursor = try await store.cursor()
         while true {
+            try Task.checkCancellation()
             let page: PullResponse
             do {
                 page = try await client.pull(after: cursor, limit: pullLimit)

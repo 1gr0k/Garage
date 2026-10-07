@@ -9,7 +9,7 @@ import SwiftUI
     init() {
         do {
             let container = try GarageStore.makeContainer()
-            try SampleSeeder.seedIfNeeded(container.mainContext)
+            try SampleSeeder.seedIfNeeded(container)
             try SyncSupport.prepare(container)
             self.container = container
             _syncController = State(initialValue: SyncController(container: container))

@@ -81,3 +81,43 @@ xcodebuild -project Garage.xcodeproj -scheme Garage \
   - `en.lproj/Localizable.stringsdict` — только для ключей с английскими plural variations. Обычные английские строки отдельным файлом не хранятся: ключ и есть английский текст.
 - `LOCALIZATION_PREFERS_STRING_CATALOGS = YES` уже стоял в build settings.
 - Извлечение ключей: `xcrun xcstringstool sync Garage/Localizable.xcstrings --stringsdata <DerivedData/…/Objects-normal/arm64/*.stringsdata>`. Файл `.xcstrings` должен существовать (хотя бы `{"sourceLanguage":"en","strings":{},"version":"1.0"}`), иначе sync пропускается с предупреждением.
+
+## Unit-test таргет (`GarageTests`)
+
+Проверено опытным путём (Swift Testing, хост — `Garage.app`). Рабочий вариант:
+
+```jsonc
+// files: синхронизируемая папка теста и продукт в группе Products
+{ "kind": "folder", "path": "GarageTests", "target-membership": [ "GarageTests" ] },
+{ "path": "<PRODUCTS>/GarageTests.xctest", "id": "000000000000000000000121", "type": "wrapper.cfbundle", "index": false },
+
+// targets
+{
+  "name": "GarageTests",
+  "id": "000000000000000200000000",
+  "product": "Products/GarageTests.xctest",
+  "product-type": "bundle.unit-test",
+  "test-host-target": "Garage",                  // имя таргета-хоста; TEST_HOST/BUNDLE_LOADER вручную не нужны
+  "build-phases": [ "compile-sources", "frameworks" ],
+  "package-product-members": [ /* как у приложения, нужные продукты */ ],
+  "build-settings": {
+    "GENERATE_INFOPLIST_FILE": "YES",
+    "PRODUCT_BUNDLE_IDENTIFIER": "devplaceholder.GarageTests",
+    "PRODUCT_NAME": "$(TARGET_NAME)",
+    "SDKROOT": "iphoneos",
+    "SUPPORTED_PLATFORMS": "iphoneos iphonesimulator",
+    "SWIFT_VERSION": "6.0",
+    "TARGETED_DEVICE_FAMILY": "1,2",
+    "SWIFT_DEFAULT_ACTOR_ISOLATION": "MainActor",
+    "SWIFT_APPROACHABLE_CONCURRENCY": "YES",
+  },
+}
+```
+
+- `"product-type": "bundle.unit-test"` (полное имя `com.apple.product-type.bundle.unit-test`). Значение `unit-test` форматтер принимает, но таргет не становится тестовым: `Scheme … is not currently configured for the test action`.
+- Продукт обязан быть в `files` (группа Products), иначе проект не открывается: `Invalid reference: “Products/GarageTests.xctest”`.
+- Без `SDKROOT`/`SUPPORTED_PLATFORMS` симуляторы не подходят: `doesn’t match .xctest’s supported platforms`.
+- Схема создаётся автоматически с именем таргета: тесты запускаются командой
+  `xcodebuild test -project Garage.xcodeproj -scheme GarageTests -destination '<…>'` (она же собирает хост `Garage.app`). Схема `Garage` для действия test не настроена (`Scheme Garage is not currently configured for the test action`), а ключей для схем в формате нет.
+- `@testable import Garage` работает (модуль приложения называется `Garage`; в Debug включён `ENABLE_TESTABILITY`).
+- Пакеты в тестовом таргете перечисляются в его собственном `package-product-members`; на уровне проекта `packages` уже есть.

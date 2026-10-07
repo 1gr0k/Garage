@@ -24,6 +24,9 @@ swift test --package-path Packages/GarageAPI
 # GarageStorage tests (iOS-only: no `swift test`; needs a simulator)
 (cd Packages/GarageStorage && xcodebuild test -scheme GarageStorage -destination '<see CLAUDE.local.md>')
 
+# App unit tests (GarageTests target, Swift Testing, host Garage.app; the scheme `Garage` has no test action)
+xcodebuild test -project Garage.xcodeproj -scheme GarageTests -destination '<see CLAUDE.local.md>'
+
 # App build
 xcodebuild -project Garage.xcodeproj -scheme Garage -destination 'generic/platform=iOS Simulator' build
 
@@ -31,7 +34,7 @@ xcodebuild -project Garage.xcodeproj -scheme Garage -destination 'generic/platfo
 xcodebuild -project Garage.xcodeproj -list
 ```
 
-There are no shared schemes checked in; Xcode auto-generates one per target (`Garage`) and one per local package product (`GarageCore`, `GarageStorage`, `GarageSync`, `GarageAPI`).
+There are no shared schemes checked in; Xcode auto-generates one per target (`Garage`, `GarageTests`) and one per local package product (`GarageCore`, `GarageStorage`, `GarageSync`, `GarageAPI`).
 
 ## Architecture
 
@@ -40,6 +43,8 @@ There are no shared schemes checked in; Xcode auto-generates one per target (`Ga
 - **`Packages/GarageSync`** — local SwiftPM package for the sync layer: `SyncEngine` (push → pull, LWW conflict resolution), the `SyncStore` and `HTTPTransport` protocols (the latter with a URLSession implementation), DTO ↔ domain mapping. Platform-independent (iOS 18 / macOS 15, Linux), depends on `GarageCore` and `GarageAPI`, tested with plain `swift test`.
 - **`Packages/GarageAPI`** — local SwiftPM package with the sync API contract: DTOs and the shared JSON config (`APICoding`). Platform-independent (iOS 18 / macOS 15), no dependencies (Foundation only); DTO ↔ domain mapping is the consumer's job. The contract is described in `docs/api.md`; its golden JSON examples (` ```json golden=<name> ` blocks) are read by the tests, tested with plain `swift test`.
 - **`Garage/`** — the SwiftUI iOS app target. It's a *synchronized folder*: every file inside is automatically a member of the `Garage` target, so adding a Swift file needs no project-file edit. The app target builds with `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` and Swift 6 strict concurrency; the package does not set default MainActor isolation.
+
+- **`GarageTests/`** — unit-test target (Swift Testing, `@testable import Garage`), also a synchronized folder; see `docs/xcproj-notes.md` for the target format.
 
 Put non-UI logic in `GarageCore` and keep the app target thin.
 

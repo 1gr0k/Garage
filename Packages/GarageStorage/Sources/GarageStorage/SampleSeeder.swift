@@ -12,8 +12,12 @@ public enum SampleSeeder {
     }
 
     /// Inserts the sample vehicles once per install. The flag is set only after a successful save.
-    public static func seedIfNeeded(_ context: ModelContext, defaults: UserDefaults = .standard) throws {
+    ///
+    /// Works in its own `ModelContext`, so it can run off the main thread.
+    public static func seedIfNeeded(_ container: ModelContainer, defaults: UserDefaults = .standard) throws {
         guard !defaults.bool(forKey: didSeedKey) else { return }
+        let context = ModelContext(container)
+        context.autosaveEnabled = false
         insertSamples(into: context)
         try context.save()
         defaults.set(true, forKey: didSeedKey)
