@@ -45,10 +45,10 @@ struct VehicleFormView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button(role: .close) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
+                    Button(role: .confirm) {
                         Task { if await viewModel.save() { dismiss() } }
                     }
                     .disabled(viewModel.isSaving)

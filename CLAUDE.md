@@ -94,7 +94,7 @@ This is the new Xcode 27 JSON-based project format (JSON with trailing commas), 
 - Code comments and `///` documentation are written in Russian. Identifiers (types, functions, variables, test functions), log messages and string-catalog keys stay in English. User-facing text goes through the catalog as before. Don't translate existing comments in files you aren't otherwise changing.
 - Bash keeps the working directory between commands: create and edit files by paths from the repository root; use a subshell `(cd … && …)` for commands that must run elsewhere.
 - Create and modify files only with the Write/Edit tools, never via shell redirection (`cat >`, heredoc, `tee`, `echo >`): hooks, /rewind and file permissions apply only to Write/Edit. The PreToolUse hook `.claude/hooks/deny-shell-writes.sh` rejects such writes into the project (exit 2); `2>&1`, `/dev/null`, the scratchpad and `/tmp` stay allowed. It guards against habit, not deliberate bypass — `cp`/`mv`/`sed -i` are still off-limits by this rule. Hook changes need a case in `scripts/test-hooks.sh`.
-- Modal forms use an inline title (`.navigationBarTitleDisplayMode(.inline)`); ru strings are longer than en, so check them on ru.
+- Modal forms use an inline title and buttons with the `.close` / `.confirm` roles; ru strings are longer than en, so check them on ru.
 - If a tool is missing or the network is closed, do not work around the restriction (mirrors, other hosts, manually unpacking binaries). Say what is missing and work with what is available: in the cloud without Swift, verification is CI.
 
 ## CI
