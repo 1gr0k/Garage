@@ -1,0 +1,312 @@
+# API синхронизации Garage, v1
+
+Контракт между приложением и будущим сервером (Vapor). Реализация DTO — `Packages/GarageAPI`. Блоки ` ```json golden=<name> ` ниже — «золотые» примеры: тесты `GarageAPITests` читают их из этого файла и проверяют, что DTO декодируют и кодируют их без расхождений. **Примеры правятся только здесь.**
+
+## Модель синхронизации
+
+- **Сущности:** `vehicle` и `serviceRecord`. Запчасти встроены в запись массивом `parts` (собственной синхронизации у них нет, запись заменяется целиком). Upsert всегда несёт полное состояние, а не патч.
+- **Версии:** у пользователя один монотонный счётчик `Int64`. При каждой записи сущность получает `version` = следующее значение. Удаление — tombstone со своей версией. Отдельного журнала нет: pull = `WHERE version > cursor ORDER BY version`, по одной (последней) строке на сущность.
+- **Операция:** `{"op":"upsert","entity":"vehicle","data":{…}}` или `{"op":"delete","entity":"serviceRecord","id":"…"}`. `ServerChange` = `version` + `modifiedAt` + поля операции.
+
+## Эндпоинты
+
+Все, кроме `POST /v1/devices`, требуют `Authorization: Bearer <token>`. Только HTTPS (TLS на reverse proxy).
+
+### `GET /v1/changes?after=<cursor>&limit=<1…500, по умолчанию 200>`
+
+Ответ `200` — `{changes, cursor, hasMore}`. `cursor` — непрозрачная строка; без `after` — полная выгрузка, включая tombstones.
+
+```json golden=pull-response
+{
+  "changes": [
+    {
+      "data": {
+        "id": "11111111-1111-4111-8111-111111111111",
+        "kind": "car",
+        "make": "Toyota",
+        "mileageKm": 87400,
+        "model": "Land Cruiser",
+        "year": 2019
+      },
+      "entity": "vehicle",
+      "modifiedAt": "2026-10-07T09:30:00.000Z",
+      "op": "upsert",
+      "version": 41
+    },
+    {
+      "data": {
+        "date": "2026-10-01T00:00:00.000Z",
+        "id": "22222222-2222-4222-8222-222222222222",
+        "laborCostKopecks": 350000,
+        "mileageKm": 87000,
+        "notes": "Заменено масло",
+        "parts": [],
+        "serviceType": "oilChange",
+        "vehicleID": "11111111-1111-4111-8111-111111111111"
+      },
+      "entity": "serviceRecord",
+      "modifiedAt": "2026-10-07T09:31:00.000Z",
+      "op": "upsert",
+      "version": 42
+    },
+    {
+      "entity": "serviceRecord",
+      "id": "33333333-3333-4333-8333-333333333333",
+      "modifiedAt": "2026-10-07T09:32:00.000Z",
+      "op": "delete",
+      "version": 43
+    }
+  ],
+  "cursor": "43",
+  "hasMore": false
+}
+```
+
+### `POST /v1/changes`
+
+Тело `{changes:[PushChange]}` (≤ 100). Ответ `200 {results:[PushResult]}`: один результат на элемент, в том же порядке. Элементы обрабатываются по порядку, каждый в своей транзакции; ошибка одного не блокирует остальные. Порядок важен: техника раньше её записей.
+
+- `changeID` (UUID) — идемпотентность: сервер хранит `lastChangeID` в строке сущности, повтор уже применённого изменения → `applied` с той же версией, а не ложный конфликт.
+- Идемпотентность держится на `lastChangeID` строки, поэтому после правки той же сущности с другого устройства повтор потерявшегося ответа может вернуть конфликт. Клиент считает изменение применённым, если `current` совпадает с его собственным содержимым (для создания — `alreadyExists` с тем же `data`).
+- Сервер обязан выделять версии и коммитить их последовательно в рамках пользователя (блокировка строки счётчика до коммита), иначе pull может пропустить версию, закоммиченную позже большей.
+- Батч > 100 элементов, невалидный `after` или `limit` вне 1…500 → `400 malformedRequest`. Сервер валидирует содержимое DTO (`kind`, `serviceType`, диапазоны чисел) и при ошибке отвечает `rejected/validationFailed`.
+- `baseVersion` — версия, на которой основана правка; `null`/отсутствует для создания.
+- `modifiedAt` — время правки на устройстве; сервер его только хранит и отдаёт.
+
+```json golden=push-request
+{
+  "changes": [
+    {
+      "changeID": "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA",
+      "data": {
+        "id": "11111111-1111-4111-8111-111111111111",
+        "kind": "car",
+        "make": "Toyota",
+        "mileageKm": 87400,
+        "model": "Land Cruiser",
+        "year": 2019
+      },
+      "entity": "vehicle",
+      "modifiedAt": "2026-10-07T09:30:00.000Z",
+      "op": "upsert"
+    },
+    {
+      "baseVersion": 42,
+      "changeID": "BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB",
+      "data": {
+        "date": "2026-10-01T00:00:00.000Z",
+        "id": "22222222-2222-4222-8222-222222222222",
+        "laborCostKopecks": 400000,
+        "mileageKm": 87000,
+        "notes": "Заменено масло и фильтр",
+        "parts": [],
+        "serviceType": "oilChange",
+        "vehicleID": "11111111-1111-4111-8111-111111111111"
+      },
+      "entity": "serviceRecord",
+      "modifiedAt": "2026-10-07T10:00:00.000Z",
+      "op": "upsert"
+    },
+    {
+      "baseVersion": 7,
+      "changeID": "CCCCCCCC-CCCC-4CCC-8CCC-CCCCCCCCCCCC",
+      "entity": "serviceRecord",
+      "id": "33333333-3333-4333-8333-333333333333",
+      "modifiedAt": "2026-10-07T10:01:00.000Z",
+      "op": "delete"
+    }
+  ]
+}
+```
+
+`PushResult.status`:
+
+- `applied` (+`version`);
+- `conflict` (+`reason`, +`current` — актуальный `ServerChange`); `reason`: `versionMismatch`, `deleted`, `alreadyExists`. Клиент читает неизвестный `reason` как `ConflictReason.unknown` и разрешает конфликт по `current`, как обычно (LWW; для `deleted` — удаление побеждает), поэтому новые причины — аддитивное изменение;
+- `rejected` (+`error`); коды: `validationFailed`, `vehicleNotFound`, `receiptNotFound`.
+
+Конфликт элемента — не HTTP-ошибка, а `200` с результатом по каждому элементу.
+
+```json golden=push-response
+{
+  "results": [
+    {
+      "changeID": "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA",
+      "status": "applied",
+      "version": 44
+    },
+    {
+      "changeID": "BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB",
+      "current": {
+        "data": {
+          "date": "2026-10-01T00:00:00.000Z",
+          "id": "22222222-2222-4222-8222-222222222222",
+          "laborCostKopecks": 350000,
+          "mileageKm": 87000,
+          "notes": "Заменено масло",
+          "parts": [],
+          "serviceType": "oilChange",
+          "vehicleID": "11111111-1111-4111-8111-111111111111"
+        },
+        "entity": "serviceRecord",
+        "modifiedAt": "2026-10-07T09:45:00.000Z",
+        "op": "upsert",
+        "version": 45
+      },
+      "reason": "versionMismatch",
+      "status": "conflict"
+    },
+    {
+      "changeID": "CCCCCCCC-CCCC-4CCC-8CCC-CCCCCCCCCCCC",
+      "error": {
+        "code": "vehicleNotFound",
+        "message": "Vehicle 11111111-1111-4111-8111-111111111111 does not exist"
+      },
+      "status": "rejected"
+    }
+  ]
+}
+```
+
+## Конфликты
+
+Сервер определяет конфликт по `baseVersion` и **никогда не перезаписывает молча**; решает клиент. Часы устройств могут расходиться, поэтому по `modifiedAt` сервер ничего не решает.
+
+Политика клиента — LWW по записи целиком: побеждает больший `modifiedAt`, при равенстве — серверная версия. Победивший клиент повторяет push с `baseVersion = current.version`. Исключение — `conflict/deleted`: удаление всегда побеждает, клиент отбрасывает свою правку и удаляет запись локально (воскрешения нет; upsert с `baseVersion == nil` на id с tombstone → `conflict/deleted`). Удаление со устаревшим `baseVersion` применяется (`applied`) — это явное намерение; удаление несуществующего id тоже `applied` (идемпотентно). Слияние по полям не используется: клиенту пришлось бы хранить базовые копии, а для одного пользователя конфликт — редкость.
+
+**Алгоритм клиента:** push очереди → pull до `hasMore == false` → сохранить cursor. Свои изменения, вернувшиеся в pull, клиент узнаёт по совпадающей версии.
+
+## Удаления
+
+- Tombstones хранятся бессрочно. `410 cursorExpired` зарезервирован на случай будущей компактации: клиент тогда выполняет полную синхронизацию.
+- Удаление побеждает правку (`conflict/deleted`). Повторное удаление идемпотентно (`applied`).
+- Удаление техники каскадно создаёт на сервере tombstones её записей; клиент отправляет только удаление техники.
+- Запись с неизвестной или удалённой техникой → `rejected/vehicleNotFound`, клиент удаляет её локально.
+
+## Сущности
+
+```json golden=vehicle
+{
+  "id": "11111111-1111-4111-8111-111111111111",
+  "kind": "motorcycle",
+  "make": "Honda",
+  "mileageKm": 18250,
+  "model": "CB500X",
+  "year": 2021
+}
+```
+
+`kind` — `car|motorcycle|bicycle`. Деньги — целые копейки. `serviceType` — строка формата `ServiceType.storageString` (`"other:<текст>"` для произвольного).
+
+Запись с запчастями и чеком:
+
+```json golden=service-record
+{
+  "date": "2026-10-01T00:00:00.000Z",
+  "id": "22222222-2222-4222-8222-222222222222",
+  "laborCostKopecks": 350000,
+  "mileageKm": 87000,
+  "notes": "Заменены колодки",
+  "parts": [
+    {
+      "id": "44444444-4444-4444-8444-444444444444",
+      "name": "Колодки передние",
+      "partNumber": "04465-60320",
+      "unitPriceKopecks": 520000,
+      "quantity": 1
+    },
+    {
+      "id": "55555555-5555-4555-8555-555555555555",
+      "name": "Болт",
+      "unitPriceKopecks": 15000,
+      "quantity": 4
+    }
+  ],
+  "receipt": {
+    "byteCount": 183204,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "serviceType": "brakes",
+  "vehicleID": "11111111-1111-4111-8111-111111111111"
+}
+```
+
+`nil` не пишется (ключ отсутствует); при чтении `null` и отсутствие ключа равнозначны.
+
+## Фото чека
+
+Отдельно от JSON, без base64, с адресацией по содержимому:
+
+- `PUT /v1/receipts/{sha256}` — тело сырой `image/jpeg`, ≤ 5 МиБ. `201` новое, `200` уже есть; `422 hashMismatch`; `413 payloadTooLarge`; `415 unsupportedMediaType`.
+- `GET /v1/receipts/{sha256}` — `ETag` = хеш, кешируется навсегда.
+- В записи — `receipt: {"sha256","byteCount"}` или поле отсутствует. Смена или удаление фото — обычная правка записи, поэтому действует та же логика конфликтов.
+- Порядок: сначала blob, потом запись. Ссылка на отсутствующий blob → `rejected/receiptNotFound`. Повтор PUT безопасен.
+
+## Аутентификация
+
+`POST /v1/devices` без токена: `{setupSecret, deviceName}` → `201 {deviceID, token}`. Токен — 32 случайных байта в base64url; сервер хранит только его SHA-256, секрет задаётся через env. Клиент хранит токен в Keychain. Устройство отзывается удалением строки на сервере (эндпоинта нет).
+
+```json golden=register-device-request
+{
+  "deviceName": "iPhone Андрея",
+  "setupSecret": "correct-horse-battery-staple"
+}
+```
+
+```json golden=register-device-response
+{
+  "deviceID": "66666666-6666-4666-8666-666666666666",
+  "token": "q83vEjRZk1T7mP0cX2wYb9LdAaNfU5hGsKiOtVeJr4I"
+}
+```
+
+## Ошибки
+
+Тело: `{"error":{"code","message","details"?}}`.
+
+| HTTP | code |
+|---|---|
+| 400 | `malformedRequest` |
+| 401 | `unauthorized`, `invalidSetupSecret` |
+| 404 | `notFound` |
+| 410 | `cursorExpired` (резерв) |
+| 413 | `payloadTooLarge` |
+| 415 | `unsupportedMediaType` |
+| 422 | `hashMismatch` |
+| 426 | `upgradeRequired` |
+| 500 | `internal` |
+
+```json golden=error-response
+{
+  "error": {
+    "code": "malformedRequest",
+    "details": {
+      "field": "limit"
+    },
+    "message": "limit must be between 1 and 500"
+  }
+}
+```
+
+## JSON-соглашения
+
+- Ключи в camelCase (`vehicleID`), без key strategy.
+- Даты — ISO 8601 UTC с миллисекундами (`2026-10-07T09:30:00.000Z`); декодер принимает и вариант без дробной части.
+- Время (`modifiedAt`, `date`) клиент округляет до миллисекунд при создании: так значение не меняется после обмена с сервером. Смещения кроме `Z` не используются.
+- `sha256` — 64 символа hex в нижнем регистре (в пути, `ETag` и `receipt`).
+- UUID — каноническая строка в верхнем регистре (так пишет `JSONEncoder`); читатели принимают любой регистр.
+- Вывод детерминирован (`.sortedKeys`).
+- Общая настройка — `APICoding.makeEncoder()` / `makeDecoder()`.
+
+## Версионирование
+
+- Префикс `/v1` в URL.
+- В рамках v1 допустимы только аддитивные изменения: новые необязательные поля (декодер игнорирует неизвестные ключи), новые коды ошибок (`APIErrorCode.unknown`), новые `reason` конфликта (`ConflictReason.unknown`), новые эндпоинты.
+- Ломающие изменения (переименование или смена типа поля, новые обязательные поля, новые значения `op`/`entity`/`status`; старый клиент при них не декодирует весь ответ) → `/v2`; сервер какое-то время обслуживает обе версии, снятую отвечает `426 upgradeRequired`.
+- **`serviceType` — терпимый читатель:** DTO передаёт строку; при маппинге в домен потребитель читает неизвестное значение как `.other(<строка>)`, поэтому новые типы работ — аддитивное изменение. Нюанс: при повторной отправке такая запись превратится в `"other:<строка>"`, если клиент не сохранит исходную строку.
+
+## Открытые вопросы
+
+- Сборка мусора для blob-ов чеков без ссылок.
+- Компактация tombstones (и тогда — поведение `cursorExpired`).
+- Многопользовательский режим.

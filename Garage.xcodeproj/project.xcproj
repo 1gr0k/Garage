@@ -21,6 +21,9 @@
     }, {
       "kind": "local",
       "path": "Packages/GarageSync",
+    }, {
+      "kind": "local",
+      "path": "Packages/GarageAPI",
     },
   ],
   "files": [
@@ -46,6 +49,10 @@
       ],
       "package-product-members": [
         {
+          "package": "GarageAPI",
+          "product-name": "GarageAPI",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
           "package": "GarageCore",
           "product-name": "GarageCore",
           "build-phase": { "build-phase": "frameworks" },

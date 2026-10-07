@@ -19,6 +19,7 @@ Without it, `swift test` fails with `plugin for module 'TestingMacros' not found
 swift test --package-path Packages/GarageCore
 swift test --package-path Packages/GarageCore --filter displayNameCombinesMakeAndModel   # single test
 swift test --package-path Packages/GarageSync
+swift test --package-path Packages/GarageAPI
 
 # GarageStorage tests (iOS-only: no `swift test`; needs a simulator)
 (cd Packages/GarageStorage && xcodebuild test -scheme GarageStorage -destination '<see CLAUDE.local.md>')
@@ -30,13 +31,14 @@ xcodebuild -project Garage.xcodeproj -scheme Garage -destination 'generic/platfo
 xcodebuild -project Garage.xcodeproj -list
 ```
 
-There are no shared schemes checked in; Xcode auto-generates one per target (`Garage`) and one per local package product (`GarageCore`, `GarageStorage`, `GarageSync`).
+There are no shared schemes checked in; Xcode auto-generates one per target (`Garage`) and one per local package product (`GarageCore`, `GarageStorage`, `GarageSync`, `GarageAPI`).
 
 ## Architecture
 
 - **`Packages/GarageCore`** — local SwiftPM package holding the model/domain layer (`Vehicle`, sample data). Platform-independent (iOS 18 / macOS 15), so its logic is testable with plain `swift test`. Types consumed by the app must be `public`.
 - **`Packages/GarageStorage`** — iOS-only local package with SwiftData persistence: `@Model` entities (`VehicleEntity`, `ServiceRecordEntity`, `PartEntity`) kept separate from the domain types, domain ↔ entity mapping (`toDomain()` / `update(from:)`), `GarageStore.makeContainer`, and `SampleSeeder`. Depends on `GarageCore`. It can't build on macOS, so it is tested only via `xcodebuild test` on a simulator.
 - **`Packages/GarageSync`** — local SwiftPM package for the sync layer (currently just the public `SyncEngine` placeholder). Platform-independent (iOS 18 / macOS 15), depends on `GarageCore`, tested with plain `swift test`.
+- **`Packages/GarageAPI`** — local SwiftPM package with the sync API contract: DTOs and the shared JSON config (`APICoding`). Platform-independent (iOS 18 / macOS 15), no dependencies (Foundation only); DTO ↔ domain mapping is the consumer's job. The contract is described in `docs/api.md`; its golden JSON examples (` ```json golden=<name> ` blocks) are read by the tests, tested with plain `swift test`.
 - **`Garage/`** — the SwiftUI iOS app target. It's a *synchronized folder*: every file inside is automatically a member of the `Garage` target, so adding a Swift file needs no project-file edit. The app target builds with `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` and Swift 6 strict concurrency; the package does not set default MainActor isolation.
 
 Put non-UI logic in `GarageCore` and keep the app target thin.
@@ -51,15 +53,16 @@ This is the new Xcode 27 JSON-based project format (JSON with trailing commas), 
 
 ## Rules
 
-- `GarageCore` and `GarageSync` must build on Linux: Foundation is allowed; UIKit, SwiftUI, AppKit, Combine and other Apple-only frameworks are not.
+- `GarageCore`, `GarageSync` and `GarageAPI` must build on Linux: Foundation is allowed; UIKit, SwiftUI, AppKit, Combine and other Apple-only frameworks are not.
+- Golden JSON examples are edited only in `docs/api.md`; never copy them into tests.
 - SwiftData only in `GarageStorage`.
 - Never create or edit `project.pbxproj`; this project uses `project.xcproj` only.
 - All new user-facing strings go into `Garage/Localizable.xcstrings` right away with a Russian translation (for counts, plural variations one/few/many/other). User data (e.g. `.other(text)`) must not reach the catalog: use `Text(verbatim:)` / `String`.
-- macOS: do not use `sed -i` (BSD syntax differs) and do not shell out to python for edits — use the Edit tool.
+- macOS: do not use `sed -i` (BSD syntax differs) and do not shell out to python for edits — use the Edit tool. There is no `timeout` command on macOS (it fails with "command not found", so the command never runs): wait with a background run or Monitor instead. Debug files and scratch tests go only in the scratchpad directory, never in the repository (and remove any temporary test file you add).
 
 ## Definition of done
 
-1. `swift test --package-path Packages/GarageCore` and `swift test --package-path Packages/GarageSync` pass.
+1. `swift test --package-path Packages/GarageCore`, `swift test --package-path Packages/GarageSync` and `swift test --package-path Packages/GarageAPI` pass.
 2. `xcodebuild test` for GarageStorage passes (see Commands; destination from `CLAUDE.local.md`).
 3. The app builds with the `xcodebuild … build` command above.
 4. If `project.xcproj` changed: `xcprojformatter --update` was run and `git diff` of it is minimal.
