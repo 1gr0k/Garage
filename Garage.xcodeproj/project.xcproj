@@ -18,6 +18,9 @@
     }, {
       "kind": "local",
       "path": "Packages/GarageStorage",
+    }, {
+      "kind": "local",
+      "path": "Packages/GarageSync",
     },
   ],
   "files": [
@@ -49,6 +52,10 @@
         }, {
           "package": "GarageStorage",
           "product-name": "GarageStorage",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "package": "GarageSync",
+          "product-name": "GarageSync",
           "build-phase": { "build-phase": "frameworks" },
         },
       ],

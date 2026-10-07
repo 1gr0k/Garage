@@ -18,6 +18,7 @@ Without it, `swift test` fails with `plugin for module 'TestingMacros' not found
 # Package tests (Swift Testing, not XCTest)
 swift test --package-path Packages/GarageCore
 swift test --package-path Packages/GarageCore --filter displayNameCombinesMakeAndModel   # single test
+swift test --package-path Packages/GarageSync
 
 # GarageStorage tests (iOS-only: no `swift test`; needs a simulator)
 (cd Packages/GarageStorage && xcodebuild test -scheme GarageStorage -destination '<see CLAUDE.local.md>')
@@ -29,12 +30,13 @@ xcodebuild -project Garage.xcodeproj -scheme Garage -destination 'generic/platfo
 xcodebuild -project Garage.xcodeproj -list
 ```
 
-There are no shared schemes checked in; Xcode auto-generates one per target (`Garage`) and one per local package product (`GarageCore`).
+There are no shared schemes checked in; Xcode auto-generates one per target (`Garage`) and one per local package product (`GarageCore`, `GarageStorage`, `GarageSync`).
 
 ## Architecture
 
 - **`Packages/GarageCore`** — local SwiftPM package holding the model/domain layer (`Vehicle`, sample data). Platform-independent (iOS 18 / macOS 15), so its logic is testable with plain `swift test`. Types consumed by the app must be `public`.
 - **`Packages/GarageStorage`** — iOS-only local package with SwiftData persistence: `@Model` entities (`VehicleEntity`, `ServiceRecordEntity`, `PartEntity`) kept separate from the domain types, domain ↔ entity mapping (`toDomain()` / `update(from:)`), `GarageStore.makeContainer`, and `SampleSeeder`. Depends on `GarageCore`. It can't build on macOS, so it is tested only via `xcodebuild test` on a simulator.
+- **`Packages/GarageSync`** — local SwiftPM package for the sync layer (currently just the public `SyncEngine` placeholder). Platform-independent (iOS 18 / macOS 15), depends on `GarageCore`, tested with plain `swift test`.
 - **`Garage/`** — the SwiftUI iOS app target. It's a *synchronized folder*: every file inside is automatically a member of the `Garage` target, so adding a Swift file needs no project-file edit. The app target builds with `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` and Swift 6 strict concurrency; the package does not set default MainActor isolation.
 
 Put non-UI logic in `GarageCore` and keep the app target thin.
@@ -49,7 +51,7 @@ This is the new Xcode 27 JSON-based project format (JSON with trailing commas), 
 
 ## Rules
 
-- `GarageCore` must build on Linux: Foundation is allowed; UIKit, SwiftUI, AppKit, Combine and other Apple-only frameworks are not.
+- `GarageCore` and `GarageSync` must build on Linux: Foundation is allowed; UIKit, SwiftUI, AppKit, Combine and other Apple-only frameworks are not.
 - SwiftData only in `GarageStorage`.
 - Never create or edit `project.pbxproj`; this project uses `project.xcproj` only.
 - All new user-facing strings go into `Garage/Localizable.xcstrings` right away with a Russian translation (for counts, plural variations one/few/many/other). User data (e.g. `.other(text)`) must not reach the catalog: use `Text(verbatim:)` / `String`.
@@ -57,7 +59,7 @@ This is the new Xcode 27 JSON-based project format (JSON with trailing commas), 
 
 ## Definition of done
 
-1. `swift test --package-path Packages/GarageCore` passes.
+1. `swift test --package-path Packages/GarageCore` and `swift test --package-path Packages/GarageSync` pass.
 2. `xcodebuild test` for GarageStorage passes (see Commands; destination from `CLAUDE.local.md`).
 3. The app builds with the `xcodebuild … build` command above.
 4. If `project.xcproj` changed: `xcprojformatter --update` was run and `git diff` of it is minimal.
