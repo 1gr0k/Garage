@@ -1,6 +1,7 @@
 import Fluent
 import Foundation
 import GarageAPI
+import GarageCore
 import Testing
 import Vapor
 import VaporTesting
@@ -337,6 +338,125 @@ func invalidPullParametersAreRejected(field: String, value: String) async throws
         #expect(orphan.code == .vehicleNotFound)
         let resurrect = try await client.push(Fixture.upsert(records[0], base: 3)).conflict()
         #expect(resurrect.reason == .deleted)
+    }
+}
+
+// MARK: - Удаление техники с нескольких устройств (docs/plans/stage-10-vehicles-crud.md)
+
+@Test func cascadeCoversRecordsTheDeletingDeviceNeverSaw() async throws {
+    try await withTestApp { _, first in
+        let second = try await first.registerAnotherDevice()
+        let vehicle = Fixture.vehicle()
+        let vehicleVersion = try await first.push(Fixture.upsert(vehicle)).appliedVersion()
+        let records = (0..<2).map { _ in Fixture.record(vehicleID: vehicle.id) }
+        let recordVersions = try await second.push(records.map { Fixture.upsert($0) }).map { try $0.appliedVersion() }
+        #expect(recordVersions == [2, 3])
+
+        // Первое устройство ни разу не делало pull и отправляет только delete машины.
+        let deletion = Fixture.delete(
+            .vehicle, vehicle.id, base: vehicleVersion, at: Fixture.date.addingTimeInterval(60))
+        #expect(try await first.push(deletion).appliedVersion() == 4)
+
+        let pull = try await second.pull(after: "3")
+        #expect(pull.changes.map(\.version) == [4, 5, 6])
+        #expect(pull.changes[0].operation == .delete(.vehicle, id: vehicle.id))
+        let cascaded = Set(pull.changes.dropFirst().map(\.operation))
+        #expect(cascaded == Set(records.map { .delete(.serviceRecord, id: $0.id) }))
+
+        let edited = Fixture.record(id: records[0].id, vehicleID: vehicle.id, notes: "edited")
+        let edit = try await second.push(Fixture.upsert(edited, base: recordVersions[0])).conflict()
+        #expect(edit.reason == .deleted)
+        #expect(edit.current.operation == .delete(.serviceRecord, id: records[0].id))
+        #expect(edit.current.version == 5)
+    }
+}
+
+@Test func queueOrderAroundVehicleDelete() async throws {
+    try await withTestApp { _, client in
+        // [upsert R(new), delete V]: оба applied, каскад превращает R в tombstone.
+        let first = Fixture.vehicle()
+        let firstVersion = try await client.push(Fixture.upsert(first)).appliedVersion()
+        let added = Fixture.record(vehicleID: first.id)
+        let addThenDelete = try await client.push([Fixture.upsert(added), Fixture.delete(.vehicle, first.id)])
+        #expect(try addThenDelete.map { try $0.appliedVersion() } == [2, 3])
+        let afterFirst = try await client.pull(after: String(firstVersion))
+        #expect(
+            afterFirst.changes.map(\.operation) == [
+                .delete(.vehicle, id: first.id), .delete(.serviceRecord, id: added.id),
+            ])
+        #expect(afterFirst.cursor == "4")
+
+        // [delete V, upsert R(new)]: R отклонён — поэтому pending-upsert'ы записей снимаются с очереди.
+        let second = Fixture.vehicle()
+        _ = try await client.push(Fixture.upsert(second)).appliedVersion()
+        let deleteThenAdd = try await client.push([
+            Fixture.delete(.vehicle, second.id), Fixture.upsert(Fixture.record(vehicleID: second.id)),
+        ])
+        #expect(try deleteThenAdd[0].appliedVersion() == 6)
+        #expect(try deleteThenAdd[1].rejection().code == .vehicleNotFound)
+
+        // [delete R, delete V]: оба applied, у R одна версия, каскад её не трогает — delete записи безопасен.
+        let third = Fixture.vehicle()
+        let record = Fixture.record(vehicleID: third.id)
+        _ = try await client.push([Fixture.upsert(third), Fixture.upsert(record)])
+        let deletes = try await client.push([
+            Fixture.delete(.serviceRecord, record.id), Fixture.delete(.vehicle, third.id),
+        ])
+        #expect(try deletes.map { try $0.appliedVersion() } == [9, 10])
+        let afterThird = try await client.pull(after: "8")
+        #expect(afterThird.changes.map(\.version) == [9, 10])
+        #expect(
+            afterThird.changes.map(\.operation) == [
+                .delete(.serviceRecord, id: record.id), .delete(.vehicle, id: third.id),
+            ])
+        #expect(afterThird.cursor == "10")
+    }
+}
+
+@Test func secondDeviceEditsAfterVehicleDelete() async throws {
+    try await withTestApp { _, first in
+        let second = try await first.registerAnotherDevice()
+        let vehicle = Fixture.vehicle()
+        let record = Fixture.record(vehicleID: vehicle.id)
+        let versions = try await first.push([Fixture.upsert(vehicle), Fixture.upsert(record)])
+            .map { try $0.appliedVersion() }
+        #expect(try await second.pull().changes.map(\.version) == versions)
+
+        let deletion = try await first.push(Fixture.delete(.vehicle, vehicle.id, base: versions[0])).appliedVersion()
+
+        let results = try await second.push([
+            Fixture.upsert(Fixture.record(vehicleID: vehicle.id)),
+            Fixture.upsert(Fixture.record(id: record.id, vehicleID: vehicle.id, notes: "edited"), base: versions[1]),
+            Fixture.upsert(Fixture.vehicle(id: vehicle.id, mileageKm: 2000), base: versions[0]),
+        ])
+        #expect(try results[0].rejection().code == .vehicleNotFound)
+        let recordConflict = try results[1].conflict()
+        #expect(recordConflict.reason == .deleted)
+        #expect(recordConflict.current.operation == .delete(.serviceRecord, id: record.id))
+        #expect(recordConflict.current.version == deletion + 1)
+        let vehicleConflict = try results[2].conflict()
+        #expect(vehicleConflict.reason == .deleted)
+        #expect(vehicleConflict.current.operation == .delete(.vehicle, id: vehicle.id))
+        #expect(vehicleConflict.current.version == deletion)
+        // Отклонённые и конфликтные изменения не тратят версий.
+        #expect(try await second.pull().cursor == String(deletion + 1))
+    }
+}
+
+@Test func sampleVehicleCannotBeRecreatedAfterDelete() async throws {
+    try await withTestApp { _, client in
+        let sample = Vehicle.samples[0]
+        let dto = VehicleDTO(
+            id: sample.id, kind: sample.kind.rawValue, make: sample.make, model: sample.model, year: sample.year,
+            mileageKm: sample.mileageKm)
+        let created = try await client.push(Fixture.upsert(dto)).appliedVersion()
+        let deleted = try await client.push(Fixture.delete(.vehicle, sample.id, base: created)).appliedVersion()
+
+        // Новое устройство засеяло ту же демо-машину и отправляет её как создание.
+        let recreate = try await client.push(Fixture.upsert(dto)).conflict()
+        #expect(recreate.reason == .deleted)
+        #expect(recreate.current.version == deleted)
+        #expect(recreate.current.operation == .delete(.vehicle, id: sample.id))
     }
 }
 

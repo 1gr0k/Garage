@@ -53,6 +53,15 @@ struct TestClient: Sendable {
             .POST, APIPath.devices, RegisterDeviceRequest(setupSecret: secret, deviceName: name), authorized: false)
     }
 
+    /// Регистрирует ещё одно устройство на том же сервере: клиент с собственным токеном.
+    func registerAnotherDevice(name: String = "Second device") async throws -> TestClient {
+        let response = try await register(name: name)
+        try #require(response.status == .created)
+        var other = self
+        other.token = try decode(RegisterDeviceResponse.self, response).token
+        return other
+    }
+
     func push(_ changes: [PushChange]) async throws -> [PushResult] {
         let response = try await json(.POST, APIPath.changes, PushRequest(changes: changes))
         try #require(response.status == .ok)

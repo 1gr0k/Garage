@@ -100,6 +100,30 @@ private func errorBody(_ code: APIErrorCode) throws -> FakeHTTPTransport.Step {
         #expect(await store.pendingChanges().map(\.changeID) == [IDs.changeA])
     }
 
+    /// П. 2 этапа 10: upsert записи стоял в очереди до sync, push придержал его (чек не загрузился),
+    /// pull приносит tombstone машины — upsert записи снимается каскадом `apply`, а не push'ем.
+    @Test func vehicleTombstoneDropsRecordUpsertHeldByReceiptFailure() async throws {
+        let store = InMemorySyncStore()
+        await store.storeSynced(.vehicle(makeVehicle()), version: 1)
+        await store.upsertLocal(
+            recordWithReceipt(sha: shaA), modifiedAt: date("2026-10-07T10:00:00.000Z"), changeID: IDs.changeA)
+        let blobs = InMemoryBlobStore(blobs: [shaA: Data([1, 2, 3])])
+        let vehicleTombstone = ServerChange(
+            version: 5, modifiedAt: date("2026-10-07T11:00:00.000Z"), operation: .delete(.vehicle, id: IDs.vehicle))
+        let transport = FakeHTTPTransport([
+            try errorBody(.payloadTooLarge),
+            try .json(PullResponse(changes: [vehicleTombstone], cursor: "5", hasMore: false)),
+        ])
+        let report = try await makeEngine(store, transport, receipts: blobs).sync()
+
+        // Push не отправлялся: единственное изменение придержано, дальше сразу pull.
+        #expect(await transport.requests.map(\.method) == ["PUT", "GET"])
+        #expect(report.pulled == 1)
+        #expect(await store.pendingChanges().isEmpty)
+        #expect(await store.stored(IDs.record) == nil)
+        #expect(await store.vehicle(IDs.vehicle) == nil)
+    }
+
     @Test func transportErrorDuringUploadPropagates() async throws {
         let store = InMemorySyncStore()
         await store.upsertLocal(

@@ -146,6 +146,111 @@ func updateServiceRecordDoesNotReachRepositoryOnInvalidDraftWithReceiptChange(re
     }
 }
 
+// MARK: AddVehicle
+
+private let currentYear = 2026
+
+@Test func addVehicleDoesNotReachRepositoryOnInvalidDraft() async {
+    let repository = FakeVehicleRepository()
+
+    await #expect(throws: VehicleDraft.Errors.self) {
+        try await AddVehicle(vehicles: repository).execute(draft: VehicleDraft(), currentYear: currentYear)
+    }
+    #expect(repository.added.isEmpty)
+}
+
+@Test func addVehiclePassesVehicle() async throws {
+    let repository = FakeVehicleRepository()
+    let draft = VehicleDraft(
+        kind: .motorcycle, make: " Honda ", model: "CB500X", yearText: "2021", mileageText: "18 250")
+
+    try await AddVehicle(vehicles: repository).execute(draft: draft, currentYear: currentYear)
+
+    #expect(repository.added.count == 1)
+    let vehicle = try #require(repository.added.first)
+    #expect(vehicle.kind == .motorcycle)
+    #expect(vehicle.make == "Honda")
+    #expect(vehicle.model == "CB500X")
+    #expect(vehicle.year == 2021)
+    #expect(vehicle.mileageKm == 18_250)
+}
+
+@Test func addVehiclePropagatesRepositoryError() async {
+    let repository = FakeVehicleRepository()
+    repository.error = TestFailure()
+
+    await #expect(throws: TestFailure.self) {
+        try await AddVehicle(vehicles: repository).execute(
+            draft: VehicleDraft(make: "Lada", model: "Niva", yearText: "2020", mileageText: "0"),
+            currentYear: currentYear)
+    }
+}
+
+// MARK: UpdateVehicle
+
+@Test func updateVehicleDoesNotReachRepositoryOnInvalidDraft() async {
+    let repository = FakeVehicleRepository()
+    let original = Vehicle.samples[0]
+    var draft = VehicleDraft(vehicle: original)
+    draft.make = " "
+
+    await #expect(throws: VehicleDraft.Errors.self) {
+        try await UpdateVehicle(vehicles: repository).execute(
+            draft: draft, original: original, currentYear: currentYear)
+    }
+    #expect(repository.updated.isEmpty)
+}
+
+@Test func updateVehicleKeepsIdentity() async throws {
+    let repository = FakeVehicleRepository()
+    let original = Vehicle.samples[0]
+    var draft = VehicleDraft(vehicle: original)
+    draft.yearText = "2020"
+    draft.mileageText = "90000"
+
+    try await UpdateVehicle(vehicles: repository).execute(draft: draft, original: original, currentYear: currentYear)
+
+    #expect(repository.updated.count == 1)
+    let vehicle = try #require(repository.updated.first)
+    #expect(vehicle.id == original.id)
+    #expect(vehicle.year == 2020)
+    #expect(vehicle.mileageKm == 90_000)
+    #expect(vehicle.make == original.make)
+}
+
+@Test func updateVehicleSkipsRepositoryWhenNothingChanged() async throws {
+    let repository = FakeVehicleRepository()
+    let original = Vehicle.samples[0]
+
+    try await UpdateVehicle(vehicles: repository).execute(
+        draft: VehicleDraft(vehicle: original), original: original, currentYear: currentYear)
+
+    #expect(repository.updated.isEmpty)
+}
+
+@Test func updateVehicleSkipsRepositoryForOriginalWithUntrimmedMake() async throws {
+    let repository = FakeVehicleRepository()
+    let original = try Vehicle(kind: .car, make: " Toyota ", model: "Corolla", year: 2010, mileageKm: 1000)
+
+    try await UpdateVehicle(vehicles: repository).execute(
+        draft: VehicleDraft(vehicle: original), original: original, currentYear: currentYear)
+
+    #expect(repository.updated.isEmpty)
+}
+
+@Test func updateVehiclePropagatesVehicleNotFound() async {
+    let repository = FakeVehicleRepository()
+    let original = Vehicle.samples[0]
+    repository.error = RepositoryError.vehicleNotFound(original.id)
+    var draft = VehicleDraft(vehicle: original)
+    draft.model = "Prado"
+
+    await #expect(throws: RepositoryError.vehicleNotFound(original.id)) {
+        try await UpdateVehicle(vehicles: repository).execute(
+            draft: draft, original: original, currentYear: currentYear)
+    }
+}
+
 // MARK: RegisterDevice
 
 private let secret = "s3cret-value"

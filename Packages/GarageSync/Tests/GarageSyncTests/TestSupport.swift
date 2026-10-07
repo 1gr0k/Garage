@@ -79,6 +79,12 @@ actor InMemorySyncStore: SyncStore {
         enqueue(.delete(ref), modifiedAt: modifiedAt, changeID: changeID)
     }
 
+    /// Сущность, уже синхронизированная с сервером: данные и версия есть, в очереди ничего.
+    func storeSynced(_ entity: SyncEntity, version: Int64) {
+        write(entity)
+        versions[entity.ref] = version
+    }
+
     func vehicle(_ id: UUID) -> Vehicle? { vehicles[id] }
     func stored(_ id: UUID) -> StoredRecord? { records[id] }
 
@@ -139,10 +145,23 @@ actor InMemorySyncStore: SyncStore {
         if unappliable.contains(ref) { throw SyncStoreError(cannotApply: TestError.noScenario) }
         switch change.operation {
         case .upsert(let entity): write(entity)
-        case .delete(let ref): remove(ref)
+        case .delete(let ref):
+            if ref.kind == .vehicle { dropRecords(ofVehicle: ref.id) }
+            remove(ref)
         }
         if let version = change.version { versions[ref] = version }
         queue.removeAll { $0.operation.ref == ref }
+    }
+
+    /// Каскад, как требует контракт `SyncStore.apply`: записи машины удаляются вместе с pending-upsert'ами.
+    /// Условие `!isDelete` защитное: у записи с pending-delete сущности уже нет, в `records` её не найти.
+    private func dropRecords(ofVehicle id: UUID) {
+        let recordIDs = records.values.filter { $0.record.vehicleID == id }.map(\.record.id)
+        for recordID in recordIDs {
+            let recordRef = EntityRef(kind: .serviceRecord, id: recordID)
+            remove(recordRef)
+            queue.removeAll { $0.operation.ref == recordRef && !$0.operation.isDelete }
+        }
     }
 
     func discard(changeID: UUID) {

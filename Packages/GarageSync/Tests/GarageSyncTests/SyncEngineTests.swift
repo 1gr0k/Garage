@@ -585,3 +585,175 @@ private func conflict(_ reason: ConflictReason, _ current: ServerChange, id: UUI
         #expect(item.value == "a%2Bb%26c")
     }
 }
+
+// MARK: Удаление машины (docs/plans/stage-10-vehicles-crud.md, «Каскадное удаление»)
+
+private let otherRecordRef = ref(.serviceRecord, uuid("44444444-4444-4444-8444-444444444444"))
+
+private func applied(_ id: UUID, version: Int64) -> PushResult {
+    PushResult(changeID: id, outcome: .applied(version: version))
+}
+
+@Suite struct VehicleDeletionTests {
+    /// П. 2: delete записи, стоящий в очереди раньше delete машины, безвреден — оба `applied`.
+    @Test func vehicleDeleteWithKeptRecordDeletesPushesCleanly() async throws {
+        let store = InMemorySyncStore()
+        await store.storeSynced(.vehicle(makeVehicle()), version: 1)
+        await store.storeSynced(.serviceRecord(makeRecord(), RecordSyncExtras()), version: 2)
+        await store.deleteLocal(recordRef, modifiedAt: date("2026-10-07T10:00:00.000Z"), changeID: IDs.changeA)
+        await store.deleteLocal(vehicleRef, modifiedAt: date("2026-10-07T10:01:00.000Z"), changeID: IDs.changeB)
+        let transport = FakeHTTPTransport([
+            try .json(PushResponse(results: [applied(IDs.changeA, version: 3), applied(IDs.changeB, version: 4)])),
+            try .json(
+                PullResponse(
+                    changes: [
+                        tombstone(3, "2026-10-07T10:00:00.000Z", recordRef),
+                        tombstone(4, "2026-10-07T10:01:00.000Z", vehicleRef),
+                    ], cursor: "4", hasMore: false)),
+        ])
+        let report = try await makeEngine(store, transport).sync()
+
+        let pushed = try decodePush(await transport.requests[0])
+        let expected: [ChangeOperation] = [.delete(.serviceRecord, id: IDs.record), .delete(.vehicle, id: IDs.vehicle)]
+        #expect(pushed.changes.map(\.operation) == expected)
+        #expect(report.rejected.isEmpty)
+        #expect(report.pushed == 2)
+        #expect(await store.pendingChanges().isEmpty)
+        #expect(await store.version(of: recordRef) == 3)
+        #expect(await store.version(of: vehicleRef) == 4)
+        #expect(await store.vehicle(IDs.vehicle) == nil)
+        #expect(await store.stored(IDs.record) == nil)
+    }
+
+    /// П. 2: tombstone машины из pull удаляет её записи и их pending-upsert'ы.
+    /// Правки делаются во время pull: push всегда идёт раньше и сам снял бы upsert, стоявший до sync.
+    /// Upsert, стоявший до sync и придержанный push'ем, — `vehicleTombstoneDropsRecordUpsertHeldByReceiptFailure`.
+    /// `delete R3` остаётся, потому что сущности R3 уже нет и каскад её не видит; условие `!isDelete`
+    /// в `InMemorySyncStore.dropRecords` этим тестом не проверяется (состояние «сущность есть, в очереди
+    /// её delete» недостижимо).
+    @Test func remoteVehicleDeleteDropsPendingRecordUpserts() async throws {
+        let store = InMemorySyncStore()
+        await store.storeSynced(.vehicle(makeVehicle()), version: 1)
+        await store.storeSynced(.serviceRecord(makeRecord(id: IDs.deletedRecord), RecordSyncExtras()), version: 2)
+        let deletedRecordRef = ref(.serviceRecord, IDs.deletedRecord)
+        let pull = PullResponse(
+            changes: [tombstone(5, "2026-10-07T11:00:00.000Z", vehicleRef)], cursor: "5", hasMore: false)
+        let transport = FakeHTTPTransport([
+            .before(
+                {
+                    // Правки, сделанные, пока sync уже прошёл push: новая запись R и удаление R3.
+                    await store.upsertLocal(
+                        .serviceRecord(makeRecord(), RecordSyncExtras()),
+                        modifiedAt: date("2026-10-07T12:00:00.000Z"), changeID: IDs.changeA)
+                    await store.deleteLocal(
+                        deletedRecordRef, modifiedAt: date("2026-10-07T12:01:00.000Z"), changeID: IDs.changeB)
+                }, try .json(pull))
+        ])
+        let engine = makeEngine(store, transport)
+        let report = try await engine.sync()
+
+        #expect(await store.vehicle(IDs.vehicle) == nil)
+        #expect(await store.stored(IDs.record) == nil)
+        #expect(await store.version(of: vehicleRef) == 5)
+        #expect(await store.pendingChanges().map(\.operation) == [.delete(deletedRecordRef)])
+        #expect(report.pulled == 1)
+
+        // Следующий push несёт только оставшийся delete записи, upsert R не уходит.
+        await transport.enqueue(try .json(PushResponse(results: [applied(IDs.changeB, version: 6)])))
+        await transport.enqueue(try .json(emptyPull(cursor: "6")))
+        _ = try await engine.sync()
+        let pushed = try decodePush(await transport.requests[1])
+        #expect(pushed.changes.map(\.operation) == [.delete(.serviceRecord, id: IDs.deletedRecord)])
+        #expect(await store.pendingChanges().isEmpty)
+    }
+
+    /// П. 3: B добавил запись к машине, которую A уже удалил.
+    @Test func newRecordForRemotelyDeletedVehicleIsDroppedLocally() async throws {
+        let store = InMemorySyncStore()
+        await store.storeSynced(.vehicle(makeVehicle()), version: 1)
+        await store.storeSynced(.serviceRecord(makeRecord(id: otherRecordRef.id), RecordSyncExtras()), version: 2)
+        await store.upsertLocal(
+            .serviceRecord(makeRecord(), RecordSyncExtras()), modifiedAt: date("2026-10-07T12:00:00.000Z"),
+            changeID: IDs.changeA)
+        let error = APIError(code: .vehicleNotFound, message: "vehicle is deleted")
+        let transport = FakeHTTPTransport([
+            try .json(PushResponse(results: [PushResult(changeID: IDs.changeA, outcome: .rejected(error))])),
+            try .json(
+                PullResponse(
+                    changes: [
+                        tombstone(5, "2026-10-07T11:00:00.000Z", vehicleRef),
+                        tombstone(6, "2026-10-07T11:00:00.000Z", otherRecordRef),
+                    ], cursor: "6", hasMore: false)),
+        ])
+        let report = try await makeEngine(store, transport).sync()
+
+        #expect(await store.vehicle(IDs.vehicle) == nil)
+        #expect(await store.stored(IDs.record) == nil)
+        #expect(await store.stored(otherRecordRef.id) == nil)
+        #expect(await store.version(of: recordRef) == nil)
+        #expect(await store.version(of: otherRecordRef) == 6)
+        #expect(await store.version(of: vehicleRef) == 5)
+        #expect(await store.pendingChanges().isEmpty)
+        #expect(report.rejected.count == 1)
+        #expect(report.rejected.first?.ref == recordRef)
+        #expect(report.rejected.first?.error.code == .vehicleNotFound)
+    }
+
+    /// П. 3: правка машины, удалённой на другом устройстве, и новая запись к ней в том же батче.
+    /// Снятие pending-upsert'а записи каскадом здесь не проверяется: R убирает `rejected` → `apply(.delete(R))`.
+    @Test func editOfRemotelyDeletedVehicleDeletesItLocally() async throws {
+        let store = InMemorySyncStore()
+        await store.storeSynced(.vehicle(makeVehicle()), version: 1)
+        await store.storeSynced(.serviceRecord(makeRecord(id: otherRecordRef.id), RecordSyncExtras()), version: 2)
+        await store.upsertLocal(
+            .vehicle(makeVehicle(mileageKm: 90_000)), modifiedAt: date("2026-10-07T12:00:00.000Z"),
+            changeID: IDs.changeA)
+        await store.upsertLocal(
+            .serviceRecord(makeRecord(), RecordSyncExtras()), modifiedAt: date("2026-10-07T12:01:00.000Z"),
+            changeID: IDs.changeB)
+        let error = APIError(code: .vehicleNotFound, message: "vehicle is deleted")
+        let transport = FakeHTTPTransport([
+            try .json(
+                PushResponse(results: [
+                    conflict(.deleted, tombstone(5, "2026-10-07T11:00:00.000Z", vehicleRef), id: IDs.changeA),
+                    PushResult(changeID: IDs.changeB, outcome: .rejected(error)),
+                ])),
+            try .json(emptyPull(cursor: "6")),
+        ])
+        let report = try await makeEngine(store, transport).sync()
+
+        #expect(await store.vehicle(IDs.vehicle) == nil)
+        #expect(await store.stored(IDs.record) == nil)
+        #expect(await store.stored(otherRecordRef.id) == nil)
+        #expect(await store.version(of: vehicleRef) == 5)
+        #expect(await store.pendingChanges().isEmpty)
+        #expect(report.conflictsResolved == 1)
+        #expect(report.rejected.count == 1)
+        #expect(report.rejected.first?.ref == recordRef)
+        #expect(await transport.requests.count == 2)
+    }
+
+    /// П. 4: демо-машина с фиксированным id, удалённая на другом устройстве, не воскресает.
+    @Test func seededVehicleOverTombstoneIsDeletedLocally() async throws {
+        let store = InMemorySyncStore()
+        let sample = Vehicle.samples[0]
+        let sampleRef = ref(.vehicle, sample.id)
+        await store.upsertLocal(.vehicle(sample), modifiedAt: date("2026-10-07T12:00:00.000Z"), changeID: IDs.changeA)
+        let transport = FakeHTTPTransport([
+            try .json(
+                PushResponse(results: [
+                    conflict(.deleted, tombstone(7, "2026-10-07T09:00:00.000Z", sampleRef), id: IDs.changeA)
+                ])),
+            try .json(emptyPull(cursor: "7")),
+        ])
+        let report = try await makeEngine(store, transport).sync()
+
+        let pushed = try decodePush(await transport.requests[0])
+        #expect(pushed.changes.first?.baseVersion == nil)
+        #expect(await store.vehicle(sample.id) == nil)
+        #expect(await store.version(of: sampleRef) == 7)
+        #expect(await store.pendingChanges().isEmpty)
+        #expect(report.conflictsResolved == 1)
+        #expect(report.rejected.isEmpty)
+    }
+}
