@@ -40,6 +40,75 @@ import Testing
     }
 }
 
+// MARK: UpdateServiceRecord
+
+private func makeOriginal() throws -> ServiceRecord {
+    try ServiceRecord(
+        vehicleID: UUID(), date: Date(timeIntervalSince1970: 1_700_000_000), mileageKm: 1000,
+        serviceType: .oilChange, laborCost: Money(rubles: 500))
+}
+
+@Test func updateServiceRecordDoesNotReachRepositoryOnInvalidDraft() async throws {
+    let editor = FakeRecordEditor()
+    let original = try makeOriginal()
+
+    await #expect(throws: ServiceRecordDraft.Errors.self) {
+        try await UpdateServiceRecord(records: editor).execute(
+            draft: ServiceRecordDraft(mileageText: ""), original: original, receipt: .keep)
+    }
+    #expect(editor.updated.isEmpty)
+}
+
+@Test func updateServiceRecordKeepsIdentityAndPassesReceiptChange() async throws {
+    let editor = FakeRecordEditor()
+    let original = try makeOriginal()
+    var draft = ServiceRecordDraft(record: original)
+    draft.mileageText = "2000"
+    let receipt = ReceiptChange.replace(Data([1, 2, 3]))
+
+    try await UpdateServiceRecord(records: editor).execute(draft: draft, original: original, receipt: receipt)
+
+    #expect(editor.updated.count == 1)
+    #expect(editor.updated[0].record.id == original.id)
+    #expect(editor.updated[0].record.vehicleID == original.vehicleID)
+    #expect(editor.updated[0].record.mileageKm == 2000)
+    #expect(editor.updated[0].receipt == receipt)
+}
+
+@Test func updateServiceRecordSkipsRepositoryWhenNothingChanged() async throws {
+    let editor = FakeRecordEditor()
+    let original = try makeOriginal()
+
+    try await UpdateServiceRecord(records: editor).execute(
+        draft: ServiceRecordDraft(record: original), original: original, receipt: .keep)
+
+    #expect(editor.updated.isEmpty)
+}
+
+@Test(arguments: [ReceiptChange.remove, .replace(Data([9]))])
+func updateServiceRecordCallsRepositoryWhenOnlyReceiptChanged(receipt: ReceiptChange) async throws {
+    let editor = FakeRecordEditor()
+    let original = try makeOriginal()
+
+    try await UpdateServiceRecord(records: editor).execute(
+        draft: ServiceRecordDraft(record: original), original: original, receipt: receipt)
+
+    #expect(editor.updated.count == 1)
+    #expect(editor.updated[0].receipt == receipt)
+}
+
+@Test func updateServiceRecordPropagatesRecordNotFound() async throws {
+    let editor = FakeRecordEditor()
+    let original = try makeOriginal()
+    editor.error = RepositoryError.recordNotFound(original.id)
+    var draft = ServiceRecordDraft(record: original)
+    draft.notes = "changed"
+
+    await #expect(throws: RepositoryError.recordNotFound(original.id)) {
+        try await UpdateServiceRecord(records: editor).execute(draft: draft, original: original, receipt: .keep)
+    }
+}
+
 // MARK: RegisterDevice
 
 private let secret = "s3cret-value"

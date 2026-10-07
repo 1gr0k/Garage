@@ -45,3 +45,20 @@ func parsingAcceptsSpacesAndBothSeparators(text: String, kopecks: Int?) throws {
 func parsingRejectsInvalidInput(text: String) {
     #expect(throws: ValidationError.invalidAmount(text)) { try Money(parsing: text) }
 }
+
+@Test(arguments: [
+    (0, "0"), (125_000, "1250"), (125_050, "1250.50"), (5, "0.05"), (125_005, "1250.05"), (990, "9.90"),
+])
+func editingTextUsesTwoKopeckDigits(kopecks: Int, expected: String) {
+    let money = Money(kopecks: kopecks)
+
+    #expect(money.editingText() == expected)
+    #expect(money.editingText(decimalSeparator: ",") == expected.replacing(".", with: ","))
+}
+
+@Test(arguments: [0, 5, 100, 125_050, 999_999_99, 1_000_000_000], [".", ","] as [Character])
+func editingTextRoundTripsThroughParsing(kopecks: Int, separator: Character) throws {
+    let money = Money(kopecks: kopecks)
+
+    #expect(try Money(parsing: money.editingText(decimalSeparator: separator)) == money)
+}
