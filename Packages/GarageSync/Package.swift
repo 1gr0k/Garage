@@ -11,10 +11,11 @@ let package = Package(
         .library(name: "GarageSync", targets: ["GarageSync"])
     ],
     dependencies: [
-        .package(path: "../GarageCore")
+        .package(path: "../GarageCore"),
+        .package(path: "../GarageAPI"),
     ],
     targets: [
-        .target(name: "GarageSync", dependencies: ["GarageCore"]),
-        .testTarget(name: "GarageSyncTests", dependencies: ["GarageSync"]),
+        .target(name: "GarageSync", dependencies: ["GarageCore", "GarageAPI"]),
+        .testTarget(name: "GarageSyncTests", dependencies: ["GarageSync", "GarageCore", "GarageAPI"]),
     ]
 )
