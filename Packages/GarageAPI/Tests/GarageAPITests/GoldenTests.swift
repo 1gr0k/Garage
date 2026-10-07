@@ -98,6 +98,17 @@ private let goldenCases: [GoldenCase] = [
                 changeID: uuid("cccccccc-cccc-4ccc-8ccc-cccccccccccc"), baseVersion: 7,
                 modifiedAt: date("2026-10-07T10:01:00.000Z"),
                 operation: .delete(.serviceRecord, id: uuid("33333333-3333-4333-8333-333333333333"))),
+            PushChange(
+                changeID: uuid("dddddddd-dddd-4ddd-8ddd-dddddddddddd"), baseVersion: nil,
+                modifiedAt: date("2026-10-07T10:02:00.000Z"),
+                operation: .upsert(
+                    .serviceRecord(
+                        ServiceRecordDTO(
+                            id: uuid("77777777-7777-4777-8777-777777777777"),
+                            vehicleID: uuid("99999999-9999-4999-8999-999999999999"),
+                            date: date("2026-10-02T00:00:00.000Z"), mileageKm: 5_200,
+                            serviceType: "chain", laborCostKopecks: 120_000, notes: "Замена цепи",
+                            parts: [])))),
         ])),
     GoldenCase(
         "push-response",
@@ -112,11 +123,13 @@ private let goldenCases: [GoldenCase] = [
                         operation: .upsert(
                             .serviceRecord(oilChange(laborCostKopecks: 350_000, notes: "Заменено масло")))))),
             PushResult(
-                changeID: uuid("cccccccc-cccc-4ccc-8ccc-cccccccccccc"),
+                changeID: uuid("cccccccc-cccc-4ccc-8ccc-cccccccccccc"), outcome: .applied(version: 46)),
+            PushResult(
+                changeID: uuid("dddddddd-dddd-4ddd-8ddd-dddddddddddd"),
                 outcome: .rejected(
                     APIError(
                         code: .vehicleNotFound,
-                        message: "Vehicle 11111111-1111-4111-8111-111111111111 does not exist"))),
+                        message: "Vehicle 99999999-9999-4999-8999-999999999999 does not exist"))),
         ])),
     GoldenCase(
         "error-response",
