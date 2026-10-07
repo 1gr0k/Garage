@@ -1,5 +1,6 @@
 import Foundation
 import GarageCore
+import GarageSync
 import SwiftData
 
 public enum ServiceLogError: Error, Hashable, Sendable {
@@ -41,6 +42,20 @@ public enum ServiceLog {
         let entity = try ServiceRecordEntity(record, vehicle: vehicle)
         entity.setReceiptImage(receiptImage)
         context.insert(entity)
+        try SyncQueue.enqueueUpsert(.serviceRecord(record, entity.syncExtras), in: context)
         try save(context)
+    }
+}
+
+public enum VehicleLog {
+    /// Inserts the vehicle and queues it for sync, in one save.
+    ///
+    /// Like `ServiceLog.add`, the work happens in a fresh `ModelContext` of `container`.
+    public static func add(_ vehicle: Vehicle, in container: ModelContainer) throws {
+        let context = ModelContext(container)
+        context.autosaveEnabled = false
+        context.insert(VehicleEntity(vehicle))
+        try SyncQueue.enqueueUpsert(.vehicle(vehicle), in: context)
+        try context.save()
     }
 }

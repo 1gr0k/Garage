@@ -88,7 +88,8 @@ func invalidPullParametersAreRejected(field: String, value: String) async throws
 
         let response = try await client.pullRaw()
         let text = String(decoding: response.body.readableBytesView, as: UTF8.self)
-        #expect(text.components(separatedBy: "2026-09-21T14:13:20.123Z").count - 1 == 3)  // 2 × modifiedAt + record date
+        // 2 × modifiedAt + record date
+        #expect(text.components(separatedBy: "2026-09-21T14:13:20.123Z").count - 1 == 3)
     }
 }
 

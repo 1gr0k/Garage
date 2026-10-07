@@ -24,3 +24,13 @@ public protocol SyncStore: Sendable {
     func cursor() async throws -> String?
     func setCursor(_ cursor: String?) async throws
 }
+
+/// Thrown by a store's `apply` when a server change cannot be written locally (e.g. a record whose vehicle
+/// is unknown). The engine reports it in `SyncReport.skipped` and carries on; any other error is fatal.
+public struct SyncStoreError: Error, Sendable {
+    public var reason: any Error
+
+    public init(cannotApply reason: any Error) {
+        self.reason = reason
+    }
+}

@@ -9,7 +9,9 @@ struct ReceiptsController: RouteCollection {
     func boot(routes: any RoutesBuilder) throws {
         // One byte above the limit is collected so that an oversized body is answered with our own
         // `413 payloadTooLarge` by the check below; anything bigger is cut off by Vapor (also mapped to 413).
-        routes.on(.PUT, "v1", "receipts", ":sha256", body: .collect(maxSize: .init(value: APIPath.maxReceiptBytes + 1)), use: put)
+        routes.on(
+            .PUT, "v1", "receipts", ":sha256", body: .collect(maxSize: .init(value: APIPath.maxReceiptBytes + 1)),
+            use: put)
         routes.get("v1", "receipts", ":sha256", use: get)
     }
 

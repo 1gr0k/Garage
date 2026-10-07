@@ -36,12 +36,22 @@ There are no shared schemes checked in; Xcode auto-generates one per target (`Ga
 ## Architecture
 
 - **`Packages/GarageCore`** — local SwiftPM package holding the model/domain layer (`Vehicle`, sample data). Platform-independent (iOS 18 / macOS 15), so its logic is testable with plain `swift test`. Types consumed by the app must be `public`.
-- **`Packages/GarageStorage`** — iOS-only local package with SwiftData persistence: `@Model` entities (`VehicleEntity`, `ServiceRecordEntity`, `PartEntity`) kept separate from the domain types, domain ↔ entity mapping (`toDomain()` / `update(from:)`), `GarageStore.makeContainer`, and `SampleSeeder`. Depends on `GarageCore`. It can't build on macOS, so it is tested only via `xcodebuild test` on a simulator.
+- **`Packages/GarageStorage`** — iOS-only local package with SwiftData persistence: `@Model` entities (`VehicleEntity`, `ServiceRecordEntity`, `PartEntity`) kept separate from the domain types, domain ↔ entity mapping (`toDomain()` / `update(from:)`), `GarageStore.makeContainer`, and `SampleSeeder`. Also the sync adapter: `SwiftDataSyncStore` (`SyncStore` + `ReceiptBlobStore` as a `ModelActor`), `SyncQueue` (puts local edits into the `PendingChangeEntity` queue in the same save as the data; `ServiceLog.add` / `VehicleLog.add` call it), `SyncSupport.prepare` (schema check + one-time bootstrap of existing data). Depends on `GarageCore`, `GarageSync` (and `GarageAPI`); direction is `GarageStorage → GarageSync → GarageAPI, GarageCore`. **Bump `GarageStore.schemaVersion` on every model change**: a mismatch resets the sync cursor and remembered versions so the next sync re-downloads everything. It can't build on macOS, so it is tested only via `xcodebuild test` on a simulator.
 - **`Packages/GarageSync`** — local SwiftPM package for the sync layer: `SyncEngine` (push → pull, LWW conflict resolution), the `SyncStore` and `HTTPTransport` protocols (the latter with a URLSession implementation), DTO ↔ domain mapping. Platform-independent (iOS 18 / macOS 15, Linux), depends on `GarageCore` and `GarageAPI`, tested with plain `swift test`.
 - **`Packages/GarageAPI`** — local SwiftPM package with the sync API contract: DTOs and the shared JSON config (`APICoding`). Platform-independent (iOS 18 / macOS 15), no dependencies (Foundation only); DTO ↔ domain mapping is the consumer's job. The contract is described in `docs/api.md`; its golden JSON examples (` ```json golden=<name> ` blocks) are read by the tests, tested with plain `swift test`.
 - **`Garage/`** — the SwiftUI iOS app target. It's a *synchronized folder*: every file inside is automatically a member of the `Garage` target, so adding a Swift file needs no project-file edit. The app target builds with `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` and Swift 6 strict concurrency; the package does not set default MainActor isolation.
 
 Put non-UI logic in `GarageCore` and keep the app target thin.
+
+### Local server for end-to-end checks
+
+```sh
+TMP=<scratchpad>/e2e; mkdir -p $TMP; openssl rand -hex 16 > $TMP/secret
+GARAGE_DB_PATH=$TMP/garage.sqlite GARAGE_SETUP_SECRET=$(cat $TMP/secret) \
+  swift run --package-path Server GarageServer serve --hostname 127.0.0.1 --port 8080   # run in background
+```
+
+In the simulator app use `http://127.0.0.1:8080` (plain http is accepted for localhost only) and the secret from `$TMP/secret`. Uninstall the app first (`xcrun simctl uninstall <udid> <bundle id>`) for a fresh database. The setup secret is never stored by the app.
 
 ## Project file (`Garage.xcodeproj/project.xcproj`)
 

@@ -12,8 +12,15 @@ public struct SyncReport: Sendable {
     public var skipped: [(ref: EntityRef, error: any Error)] = []
     /// Edits still queued after the push rounds ran out (they go out on the next sync).
     public var stillPending: [PendingChange] = []
+    /// Receipt uploads or downloads that failed; the affected edits/records are retried on the next sync.
+    public var receiptFailures: [(sha256: String, error: any Error)] = []
 
     public init() {}
+}
+
+/// The local blob store failed (as opposed to the server or the network).
+private struct ReceiptStoreFailure: Error {
+    var underlying: any Error
 }
 
 /// Push the queue → pull until `hasMore == false` → keep the cursor. Conflicts are resolved
@@ -24,11 +31,17 @@ public actor SyncEngine {
 
     private let store: any SyncStore
     private let client: SyncAPIClient
+    private let receipts: (any ReceiptBlobStore)?
     private let pullLimit: Int
 
-    public init(store: any SyncStore, client: SyncAPIClient, pullLimit: Int = APIPath.defaultPullLimit) {
+    /// Without `receipts` the engine syncs records only and leaves receipt photos alone.
+    public init(
+        store: any SyncStore, client: SyncAPIClient, receipts: (any ReceiptBlobStore)? = nil,
+        pullLimit: Int = APIPath.defaultPullLimit
+    ) {
         self.store = store
         self.client = client
+        self.receipts = receipts
         self.pullLimit = min(max(pullLimit, 1), APIPath.maxPullLimit)
     }
 
@@ -44,21 +57,35 @@ public actor SyncEngine {
     private var inFlight: Task<SyncReport, any Error>?
     /// Vehicles the server refused to validate in the current run; their records are not deleted locally.
     private var rejectedVehicles: Set<UUID> = []
+    /// Receipt hashes the server has (or just got) in the current run.
+    private var uploadedReceipts: Set<String> = []
+    private var failedReceipts: Set<String> = []
 
     private func run() async throws -> SyncReport {
         var report = SyncReport()
         rejectedVehicles = []
+        uploadedReceipts = []
+        failedReceipts = []
         try await push(&report)
         try await pull(&report)
+        try await downloadMissingReceipts(&report)
         return report
     }
 
     // MARK: Push
 
     private func push(_ report: inout SyncReport) async throws {
+        var held = false
+        var settled = false
         for _ in 0..<Self.maxPushRounds {
-            let pending = try await store.pendingChanges()
-            guard !pending.isEmpty else { return }
+            let queued = try await store.pendingChanges()
+            guard !queued.isEmpty else { return }
+            let pending = try await uploadReceipts(for: queued, report: &report)
+            if pending.count < queued.count { held = true }
+            guard !pending.isEmpty else {
+                settled = true
+                break
+            }
             var rebased = false
             for start in stride(from: 0, to: pending.count, by: APIPath.maxPushBatch) {
                 let batch = Array(pending[start..<min(start + APIPath.maxPushBatch, pending.count)])
@@ -70,9 +97,76 @@ public actor SyncEngine {
                     if try await resolve(change, outcome: result.outcome, report: &report) { rebased = true }
                 }
             }
-            if !rebased { return }
+            if !rebased {
+                settled = true
+                break
+            }
         }
-        report.stillPending = try await store.pendingChanges()
+        if held || !settled { report.stillPending = try await store.pendingChanges() }
+    }
+
+    /// Uploads the receipt blobs the batch refers to (the server rejects a record whose blob is missing).
+    /// Returns the changes that may be pushed: an edit whose blob could not be uploaded stays queued.
+    private func uploadReceipts(for changes: [PendingChange], report: inout SyncReport) async throws -> [PendingChange]
+    {
+        guard let receipts else { return changes }
+        var sendable: [PendingChange] = []
+        for change in changes {
+            guard case .upsert(.serviceRecord(_, let extras)) = change.operation, let ref = extras.receipt else {
+                sendable.append(change)
+                continue
+            }
+            let sha256 = ref.sha256
+            if uploadedReceipts.contains(sha256) {
+                sendable.append(change)
+                continue
+            }
+            if failedReceipts.contains(sha256) { continue }
+            do {
+                let data: Data?
+                do {
+                    data = try await receipts.receiptData(sha256: sha256)
+                } catch {
+                    throw ReceiptStoreFailure(underlying: error)
+                }
+                if let data { try await client.uploadReceipt(sha256: sha256, data: data) }
+                uploadedReceipts.insert(sha256)
+                sendable.append(change)
+            } catch let failure as ReceiptStoreFailure {
+                failedReceipts.insert(sha256)
+                report.receiptFailures.append((sha256, failure.underlying))
+            } catch let error as SyncError {
+                // The server answered with a refusal: this edit waits, the rest goes on. Transport errors propagate.
+                failedReceipts.insert(sha256)
+                report.receiptFailures.append((sha256, error))
+            }
+        }
+        return sendable
+    }
+
+    // MARK: Receipt download
+
+    private func downloadMissingReceipts(_ report: inout SyncReport) async throws {
+        guard let receipts else { return }
+        let missing: [ReceiptRefDTO]
+        do {
+            missing = try await receipts.missingReceipts()
+        } catch {
+            report.receiptFailures.append(("", error))
+            return
+        }
+        var seen: Set<String> = []
+        for ref in missing where seen.insert(ref.sha256).inserted {
+            do {
+                let data = try await client.downloadReceipt(sha256: ref.sha256)
+                try await receipts.storeReceipt(data, for: ref)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                // Not fatal: the record stays marked as missing its photo and is retried on the next sync.
+                report.receiptFailures.append((ref.sha256, error))
+            }
+        }
     }
 
     /// Returns `true` when the change stays queued on a new base version.
@@ -143,7 +237,12 @@ public actor SyncEngine {
             report.skipped.append((ref, error))
             return false
         }
-        try await store.apply(RemoteChange(version: change.version, operation: operation), for: ref)
+        do {
+            try await store.apply(RemoteChange(version: change.version, operation: operation), for: ref)
+        } catch let error as SyncStoreError {
+            report.skipped.append((ref, error.reason))
+            return false
+        }
         return true
     }
 

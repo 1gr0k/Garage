@@ -9,7 +9,7 @@ public enum SyncMappingError: Error, Hashable, Sendable {
 /// What the server knows about a record but the domain model does not. The storage adapter keeps both
 /// fields next to the record and hands them back on push, so a local edit never erases them.
 public struct RecordSyncExtras: Hashable, Sendable {
-    /// Receipt photo reference; uploading blobs is not part of the sync engine yet.
+    /// Receipt photo reference; the blob itself travels through `ReceiptBlobStore`.
     public var receipt: ReceiptRefDTO?
     /// The original `serviceType` string when the server sent a value this client does not know.
     public var rawServiceType: String?

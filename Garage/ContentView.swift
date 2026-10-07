@@ -1,7 +1,6 @@
 import GarageCore
 import GarageStorage
 import OSLog
-import Playgrounds
 import SwiftData
 import SwiftUI
 
@@ -10,6 +9,8 @@ private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Garage",
 struct ContentView: View {
     @Query(sort: [SortDescriptor(\VehicleEntity.make), SortDescriptor(\VehicleEntity.model)])
     private var entities: [VehicleEntity]
+
+    @State private var isShowingSyncSettings = false
 
     private var vehicles: [(vehicle: Vehicle, recordCount: Int)] {
         entities.compactMap { entity in
@@ -46,6 +47,14 @@ struct ContentView: View {
                 }
             }
             .navigationTitle("Garage")
+            .toolbar {
+                Button("Synchronization", systemImage: "arrow.triangle.2.circlepath") {
+                    isShowingSyncSettings = true
+                }
+            }
+            .sheet(isPresented: $isShowingSyncSettings) {
+                NavigationStack { SyncSettingsView() }
+            }
         }
     }
 }
@@ -55,8 +64,5 @@ struct ContentView: View {
     SampleSeeder.insertSamples(into: container.mainContext)
     return ContentView()
         .modelContainer(container)
-}
-
-#Playground {
-    _ = 1 + 2
+        .environment(SyncController(container: container))
 }

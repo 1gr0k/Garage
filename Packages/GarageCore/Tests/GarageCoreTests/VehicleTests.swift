@@ -90,3 +90,15 @@ private func record(for vehicle: Vehicle, mileageKm: Int) throws -> ServiceRecor
 
     #expect(car.currentMileageKm(records: records) == 51_000)
 }
+
+@Test func sampleIDsAreStableAndUnique() {
+    let ids = Vehicle.samples.map(\.id)
+
+    #expect(ids == Vehicle.samples.map(\.id))
+    #expect(Set(ids).count == ids.count)
+    #expect(
+        ids == [
+            Vehicle.SampleID.landCruiser, Vehicle.SampleID.transporter, Vehicle.SampleID.cb500x,
+            Vehicle.SampleID.rockhopper,
+        ])
+}

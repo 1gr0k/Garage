@@ -381,6 +381,19 @@ private func conflict(_ reason: ConflictReason, _ current: ServerChange, id: UUI
         #expect(report.pulled == 0)
         #expect(await store.cursor() == "1")
     }
+
+    @Test func unappliableRemoteChangeIsSkippedNotFatal() async throws {
+        let store = InMemorySyncStore()
+        await store.setUnappliable(recordRef)
+        let pull = PullResponse(
+            changes: [serverChange(1, "2026-10-07T09:00:00.000Z", .serviceRecord(makeRecord(), RecordSyncExtras()))],
+            cursor: "1", hasMore: false)
+        let report = try await makeEngine(store, FakeHTTPTransport([try .json(pull)])).sync()
+        #expect(report.skipped.count == 1)
+        #expect(report.pulled == 0)
+        #expect(await store.version(of: recordRef) == nil)
+        #expect(await store.cursor() == "1")
+    }
 }
 
 @Suite struct SyncEngineSafetyTests {

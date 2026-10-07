@@ -35,6 +35,31 @@ public struct SyncAPIClient: Sendable {
         return try APICoding.makeDecoder().decode(PushResponse.self, from: response.body)
     }
 
+    /// `POST /v1/devices`: the only call without a token.
+    public static func registerDevice(
+        transport: any HTTPTransport, setupSecret: String, deviceName: String
+    ) async throws -> RegisterDeviceResponse {
+        let body = try APICoding.makeEncoder().encode(
+            RegisterDeviceRequest(setupSecret: setupSecret, deviceName: deviceName))
+        let response = try await transport.send(
+            HTTPRequest(
+                method: "POST", path: APIPath.devices, headers: ["Content-Type": "application/json"], body: body))
+        try validate(response)
+        return try APICoding.makeDecoder().decode(RegisterDeviceResponse.self, from: response.body)
+    }
+
+    /// `PUT /v1/receipts/{sha256}`; `200` (already there) and `201` are both success.
+    public func uploadReceipt(sha256: String, data: Data) async throws {
+        _ = try await send(
+            HTTPRequest(
+                method: "PUT", path: APIPath.receipt(sha256: sha256), headers: ["Content-Type": "image/jpeg"],
+                body: data))
+    }
+
+    public func downloadReceipt(sha256: String) async throws -> Data {
+        try await send(HTTPRequest(method: "GET", path: APIPath.receipt(sha256: sha256))).body
+    }
+
     private static let unreserved = CharacterSet(
         charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
 
@@ -46,12 +71,16 @@ public struct SyncAPIClient: Sendable {
         var request = request
         request.headers["Authorization"] = "Bearer \(token)"
         let response = try await transport.send(request)
+        try Self.validate(response)
+        return response
+    }
+
+    private static func validate(_ response: HTTPResponse) throws {
         guard (200..<300).contains(response.status) else {
             if let decoded = try? APICoding.makeDecoder().decode(APIErrorResponse.self, from: response.body) {
                 throw SyncError.api(status: response.status, decoded.error)
             }
             throw SyncError.http(status: response.status)
         }
-        return response
     }
 }

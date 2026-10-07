@@ -70,10 +70,25 @@ public struct Vehicle: Identifiable, Hashable, Sendable, Codable {
 }
 
 extension Vehicle {
+    /// Fixed ids of `samples`: the demo vehicles are the same entities on every device that syncs.
+    public enum SampleID {
+        public static let landCruiser = UUID(uuidString: "5A3F0001-6C0D-4B7E-9A10-000000000001")!
+        public static let transporter = UUID(uuidString: "5A3F0002-6C0D-4B7E-9A10-000000000002")!
+        public static let cb500x = UUID(uuidString: "5A3F0003-6C0D-4B7E-9A10-000000000003")!
+        public static let rockhopper = UUID(uuidString: "5A3F0004-6C0D-4B7E-9A10-000000000004")!
+    }
+
     public static let samples: [Vehicle] = [
-        try! Vehicle(kind: .car, make: "Toyota", model: "Land Cruiser", year: 2019, mileageKm: 87_400),
-        try! Vehicle(kind: .car, make: "Volkswagen", model: "Transporter", year: 2015, mileageKm: 214_000),
-        try! Vehicle(kind: .motorcycle, make: "Honda", model: "CB500X", year: 2021, mileageKm: 18_250),
-        try! Vehicle(kind: .bicycle, make: "Specialized", model: "Rockhopper", year: 2022, mileageKm: 3_120),
+        try! Vehicle(
+            id: SampleID.landCruiser, kind: .car, make: "Toyota", model: "Land Cruiser", year: 2019,
+            mileageKm: 87_400),
+        try! Vehicle(
+            id: SampleID.transporter, kind: .car, make: "Volkswagen", model: "Transporter", year: 2015,
+            mileageKm: 214_000),
+        try! Vehicle(
+            id: SampleID.cb500x, kind: .motorcycle, make: "Honda", model: "CB500X", year: 2021, mileageKm: 18_250),
+        try! Vehicle(
+            id: SampleID.rockhopper, kind: .bicycle, make: "Specialized", model: "Rockhopper", year: 2022,
+            mileageKm: 3_120),
     ]
 }

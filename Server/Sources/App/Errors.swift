@@ -69,7 +69,8 @@ struct APIErrorMiddleware: AsyncMiddleware {
         let (context, summary): (DecodingError.Context, String)
         switch error {
         case .keyNotFound(let key, let c): (context, summary) = (c, "missing key \"\(key.stringValue)\"")
-        case .typeMismatch(_, let c), .valueNotFound(_, let c), .dataCorrupted(let c): (context, summary) = (c, c.debugDescription)
+        case .typeMismatch(_, let c), .valueNotFound(_, let c), .dataCorrupted(let c):
+            (context, summary) = (c, c.debugDescription)
         @unknown default: return "Malformed request body"
         }
         let location = path(context)

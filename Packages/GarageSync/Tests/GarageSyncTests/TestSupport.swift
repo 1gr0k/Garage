@@ -130,7 +130,13 @@ actor InMemorySyncStore: SyncStore {
         queue[index].baseVersion = version
     }
 
-    func apply(_ change: RemoteChange, for ref: EntityRef) {
+    /// Refs whose `apply` fails with `SyncStoreError`, like a record without its vehicle.
+    var unappliable: Set<EntityRef> = []
+
+    func setUnappliable(_ ref: EntityRef) { unappliable.insert(ref) }
+
+    func apply(_ change: RemoteChange, for ref: EntityRef) throws {
+        if unappliable.contains(ref) { throw SyncStoreError(cannotApply: TestError.noScenario) }
         switch change.operation {
         case .upsert(let entity): write(entity)
         case .delete(let ref): remove(ref)
@@ -196,4 +202,35 @@ func emptyPull(cursor: String) -> PullResponse {
 
 func decodePush(_ request: HTTPRequest) throws -> PushRequest {
     try APICoding.makeDecoder().decode(PushRequest.self, from: request.body ?? Data())
+}
+
+// MARK: Receipts
+
+actor InMemoryBlobStore: ReceiptBlobStore {
+    var blobs: [String: Data]
+    var missing: [ReceiptRefDTO]
+    var failStoring = false
+    private(set) var stored: [String: Data] = [:]
+
+    init(blobs: [String: Data] = [:], missing: [ReceiptRefDTO] = []) {
+        self.blobs = blobs
+        self.missing = missing
+    }
+
+    func setFailStoring(_ value: Bool) { failStoring = value }
+
+    func receiptData(sha256: String) -> Data? { blobs[sha256] }
+
+    func missingReceipts() -> [ReceiptRefDTO] { missing.filter { stored[$0.sha256] == nil } }
+
+    func storeReceipt(_ data: Data, for ref: ReceiptRefDTO) throws {
+        if failStoring { throw TestError.noScenario }
+        stored[ref.sha256] = data
+    }
+}
+
+func makeEngine(
+    _ store: InMemorySyncStore, _ transport: FakeHTTPTransport, receipts: InMemoryBlobStore
+) -> SyncEngine {
+    SyncEngine(store: store, client: makeClient(transport), receipts: receipts)
 }

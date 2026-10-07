@@ -4,11 +4,15 @@ import SwiftUI
 
 @main struct GarageApp: App {
     private let container: ModelContainer
+    @State private var syncController: SyncController
 
     init() {
         do {
-            container = try GarageStore.makeContainer()
+            let container = try GarageStore.makeContainer()
             try SampleSeeder.seedIfNeeded(container.mainContext)
+            try SyncSupport.prepare(container)
+            self.container = container
+            _syncController = State(initialValue: SyncController(container: container))
         } catch {
             fatalError("Failed to set up the garage store: \(error)")
         }
@@ -19,5 +23,6 @@ import SwiftUI
             ContentView()
         }
         .modelContainer(container)
+        .environment(syncController)
     }
 }

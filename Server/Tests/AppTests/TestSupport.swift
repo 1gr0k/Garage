@@ -1,9 +1,10 @@
-@testable import App
 import Foundation
 import GarageAPI
 import Testing
 import Vapor
 import VaporTesting
+
+@testable import App
 
 let testSetupSecret = "test-setup-secret"
 
@@ -48,7 +49,8 @@ struct TestClient: Sendable {
     }
 
     func register(secret: String = testSetupSecret, name: String = "Test iPhone") async throws -> TestingHTTPResponse {
-        try await json(.POST, APIPath.devices, RegisterDeviceRequest(setupSecret: secret, deviceName: name), authorized: false)
+        try await json(
+            .POST, APIPath.devices, RegisterDeviceRequest(setupSecret: secret, deviceName: name), authorized: false)
     }
 
     func push(_ changes: [PushChange]) async throws -> [PushResult] {
@@ -128,7 +130,8 @@ enum Fixture {
     static func upsert(
         _ dto: ServiceRecordDTO, base: Int64? = nil, changeID: UUID = UUID(), at modifiedAt: Date = date
     ) -> PushChange {
-        PushChange(changeID: changeID, baseVersion: base, modifiedAt: modifiedAt, operation: .upsert(.serviceRecord(dto)))
+        PushChange(
+            changeID: changeID, baseVersion: base, modifiedAt: modifiedAt, operation: .upsert(.serviceRecord(dto)))
     }
 
     static func delete(
@@ -142,7 +145,9 @@ enum Fixture {
 
 extension PushResult {
     func appliedVersion() throws -> Int64 {
-        guard case .applied(let version) = outcome else { throw TestFailure(description: "expected applied, got \(outcome)") }
+        guard case .applied(let version) = outcome else {
+            throw TestFailure(description: "expected applied, got \(outcome)")
+        }
         return version
     }
 
@@ -154,7 +159,9 @@ extension PushResult {
     }
 
     func rejection() throws -> APIError {
-        guard case .rejected(let error) = outcome else { throw TestFailure(description: "expected rejected, got \(outcome)") }
+        guard case .rejected(let error) = outcome else {
+            throw TestFailure(description: "expected rejected, got \(outcome)")
+        }
         return error
     }
 }
