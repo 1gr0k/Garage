@@ -46,7 +46,7 @@ public struct PartDraft: Identifiable, Hashable, Sendable {
 }
 
 /// Editable state of the service record form. Fields hold raw user input;
-/// `makeRecord(vehicleID:)` validates it all at once.
+/// `makeRecord(id:vehicleID:)` validates it all at once.
 public struct ServiceRecordDraft: Hashable, Sendable {
     public var date: Date
     public var mileageText: String
@@ -77,8 +77,8 @@ public struct ServiceRecordDraft: Hashable, Sendable {
     /// Черновик для правки существующей записи: обратное отображение `makeRecord`.
     ///
     /// - Parameter decimalSeparator: разделитель копеек в `laborCostText` и `unitPriceText`
-    ///   (форма передаёт разделитель текущей локали; `Money(parsing:)` принимает и `,`, и `.`).
-    public init(record: ServiceRecord, decimalSeparator: Character = ".") {
+    ///   (ViewModel выбирает `.comma`, только если в текущей локали это `,`, иначе `.period`).
+    public init(record: ServiceRecord, decimalSeparator: Money.DecimalSeparator = .period) {
         var otherText = ""
         if case .other(let text) = record.serviceType { otherText = text }
         self.init(

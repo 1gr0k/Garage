@@ -53,11 +53,14 @@ func editingTextUsesTwoKopeckDigits(kopecks: Int, expected: String) {
     let money = Money(kopecks: kopecks)
 
     #expect(money.editingText() == expected)
-    #expect(money.editingText(decimalSeparator: ",") == expected.replacing(".", with: ","))
+    #expect(money.editingText(decimalSeparator: .period) == expected)
+    #expect(money.editingText(decimalSeparator: .comma) == expected.replacing(".", with: ","))
 }
 
-@Test(arguments: [0, 5, 100, 125_050, 999_999_99, 1_000_000_000], [".", ","] as [Character])
-func editingTextRoundTripsThroughParsing(kopecks: Int, separator: Character) throws {
+@Test(
+    arguments: [0, 5, 100, 125_050, 99_999_999, 1_000_000_000],
+    [Money.DecimalSeparator.period, .comma])
+func editingTextRoundTripsThroughParsing(kopecks: Int, separator: Money.DecimalSeparator) throws {
     let money = Money(kopecks: kopecks)
 
     #expect(try Money(parsing: money.editingText(decimalSeparator: separator)) == money)

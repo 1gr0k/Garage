@@ -97,6 +97,43 @@ func updateServiceRecordCallsRepositoryWhenOnlyReceiptChanged(receipt: ReceiptCh
     #expect(editor.updated[0].receipt == receipt)
 }
 
+@Test func updateServiceRecordCallsRepositoryWhenDraftChangedAndReceiptKept() async throws {
+    let editor = FakeRecordEditor()
+    let original = try makeOriginal()
+    var draft = ServiceRecordDraft(record: original)
+    draft.notes = "x"
+
+    try await UpdateServiceRecord(records: editor).execute(draft: draft, original: original, receipt: .keep)
+
+    #expect(editor.updated.count == 1)
+    #expect(editor.updated[0].record.notes == "x")
+    #expect(editor.updated[0].receipt == .keep)
+}
+
+@Test(arguments: [ReceiptChange.remove, .replace(Data([9]))])
+func updateServiceRecordDoesNotReachRepositoryOnInvalidDraftWithReceiptChange(receipt: ReceiptChange) async throws {
+    let editor = FakeRecordEditor()
+    let original = try makeOriginal()
+    var draft = ServiceRecordDraft(record: original)
+    draft.mileageText = ""
+
+    await #expect(throws: ServiceRecordDraft.Errors.self) {
+        try await UpdateServiceRecord(records: editor).execute(draft: draft, original: original, receipt: receipt)
+    }
+    #expect(editor.updated.isEmpty)
+}
+
+@Test func updateServiceRecordSkipsRepositoryForOriginalWithUntrimmedPartName() async throws {
+    let editor = FakeRecordEditor()
+    var original = try makeOriginal()
+    original.parts = [try Part(name: " Фильтр ", partNumber: "", unitPrice: Money(rubles: 700))]
+
+    try await UpdateServiceRecord(records: editor).execute(
+        draft: ServiceRecordDraft(record: original), original: original, receipt: .keep)
+
+    #expect(editor.updated.isEmpty)
+}
+
 @Test func updateServiceRecordPropagatesRecordNotFound() async throws {
     let editor = FakeRecordEditor()
     let original = try makeOriginal()

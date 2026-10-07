@@ -37,17 +37,24 @@ public struct Money: Hashable, Sendable, Comparable, AdditiveArithmetic {
         self.kopecks = scaled + kopecks
     }
 
-    /// Текст для поля ввода: `"1250"` для целых рублей, иначе `"1250<sep>50"` (всегда две цифры копеек).
+    /// Разделитель рублей и копеек в тексте поля ввода; `init(parsing:)` понимает оба.
+    public enum DecimalSeparator: Hashable, Sendable {
+        case comma, period
+
+        fileprivate var symbol: Character { self == .comma ? "," : "." }
+    }
+
+    /// Текст для поля ввода неотрицательной суммы: `"1250"` для целых рублей, иначе `"1250<sep>50"`
+    /// (всегда две цифры копеек). `init(parsing:)` разбирает результат обратно.
     ///
     /// Не `NumberFormatter`: он зависит от локали и вставляет неразрывные пробелы.
-    /// `init(parsing:)` разбирает результат обратно при любом из разделителей `,` и `.`.
-    public func editingText(decimalSeparator: Character = ".") -> String {
+    public func editingText(decimalSeparator: DecimalSeparator = .period) -> String {
         let sign = kopecks < 0 ? "-" : ""
         let absolute = kopecks.magnitude
         let rubles = absolute / 100
         let rest = absolute % 100
         guard rest != 0 else { return "\(sign)\(rubles)" }
-        return "\(sign)\(rubles)\(decimalSeparator)\(rest < 10 ? "0" : "")\(rest)"
+        return "\(sign)\(rubles)\(decimalSeparator.symbol)\(rest < 10 ? "0" : "")\(rest)"
     }
 
     private static func isDigits(_ text: Substring) -> Bool {

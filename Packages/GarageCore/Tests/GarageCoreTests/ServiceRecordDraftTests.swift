@@ -177,6 +177,10 @@ private func sampleRecords() throws -> [ServiceRecord] {
         try ServiceRecord(
             vehicleID: vehicleID, date: sampleDate, mileageKm: 10_000_000, serviceType: .tires,
             laborCost: Money(kopecks: 1)),
+        try ServiceRecord(
+            vehicleID: vehicleID, date: sampleDate, mileageKm: 500, serviceType: .repair,
+            laborCost: Money(kopecks: 5),
+            parts: [try Part(name: "Прокладка", unitPrice: .zero, quantity: 2)]),
     ]
 }
 
@@ -187,12 +191,23 @@ private func sampleRecords() throws -> [ServiceRecord] {
     }
 }
 
-@Test(arguments: [(".", "1250.50"), (",", "1250,50")] as [(Character, String)])
-func draftFromRecordUsesDecimalSeparator(separator: Character, expected: String) throws {
+@Test(arguments: [(Money.DecimalSeparator.period, "1250.50", "1999.05"), (.comma, "1250,50", "1999,05")])
+func draftFromRecordUsesDecimalSeparator(separator: Money.DecimalSeparator, labor: String, price: String) throws {
     let record = try sampleRecords()[0]
     let draft = ServiceRecordDraft(record: record, decimalSeparator: separator)
 
+    #expect(draft.laborCostText == labor)
+    #expect(draft.parts[1].unitPriceText == price)
+    #expect(try draft.makeRecord(id: record.id, vehicleID: record.vehicleID) == record)
+}
+
+@Test(arguments: [(Money.DecimalSeparator.period, "0.05"), (.comma, "0,05")])
+func draftFromRecordKeepsLeadingKopeckZero(separator: Money.DecimalSeparator, expected: String) throws {
+    let record = try sampleRecords()[3]
+    let draft = ServiceRecordDraft(record: record, decimalSeparator: separator)
+
     #expect(draft.laborCostText == expected)
+    #expect(draft.parts[0].unitPriceText == "0")
     #expect(try draft.makeRecord(id: record.id, vehicleID: record.vehicleID) == record)
 }
 

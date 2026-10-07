@@ -31,6 +31,9 @@ Use case заводится **только если есть правило ил
 
 - `AddServiceRecord` — use case: правило (черновик проверяется `ServiceRecordDraft.makeRecord`, его
   ошибки пробрасываются как есть) + сохранение через `ServiceRecordRepository`.
+- `UpdateServiceRecord` — use case: то же правило для правки (`id` и `vehicleID` берутся из исходной
+  записи) + «ничего не изменилось → порт не вызывается»; сохранение через `ServiceRecordEditing`.
+- `ServiceRecordEditing.delete` — порт без use case: правил у удаления нет, подтверждение — это UI.
 - `RegisterDevice`, `SyncNow`, `ForgetDevice` — use case'ы: проверка адреса (`ServerURLPolicy`),
   «секрет не сохраняется», «нет регистрации → `SyncFailure.notRegistered`», порядок «сброс, потом
   удаление токена».
@@ -116,7 +119,8 @@ ViewModel (`makeServiceRecordFormViewModel(vehicleID:currentMileageKm:)`) и о�
 - Use case: `UpdateServiceRecord` — то же правило, что у `AddServiceRecord` (черновик → запись),
   `id` и `vehicleID` берутся из исходной записи; запись и чек не менялись — порт не вызывается.
   Удаление без правил — ViewModel зовёт `ServiceRecordEditing.delete` напрямую (подтверждение — это UI).
-- Черновик: `ServiceRecordDraft(record:decimalSeparator:)` для формы правки, `makeRecord(id:vehicleID:)`.
+- Черновик: `ServiceRecordDraft(record:decimalSeparator:)` для формы правки (`Money.DecimalSeparator`:
+  ViewModel выбирает `.comma`, только если в локали `,`, иначе `.period`), `makeRecord(id:vehicleID:)`.
 - Адаптер (B): правка через `update(from:)` и `SyncQueue.enqueueUpsert`, удаление — `SyncQueue.enqueueDelete`
   в том же сохранении, что и `context.delete`; чек меняется только через `setReceiptImage`.
 - ViewModel (B): форма переиспользует `ServiceRecordFormViewModel` с режимом правки; удаление —

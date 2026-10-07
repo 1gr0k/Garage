@@ -50,14 +50,15 @@
 
 ### A1. Черновик из записи — `ServiceRecordDraft.swift`
 
-- `public init(record: ServiceRecord, decimalSeparator: Character = ".")` — обратное отображение для
+- `public init(record: ServiceRecord, decimalSeparator: Money.DecimalSeparator = .period)` — обратное отображение для
   формы:
   - `mileageText` — цифры без пробелов;
   - `serviceTypeChoice = ServiceTypeChoice(record.serviceType)`; для `.other(text)` заполняется
     `otherServiceTypeText = text`;
   - `laborCostText`: `.zero` → `""` (пустое поле и так разбирается как ноль), целые рубли → `"1250"`,
     с копейками → `"1250<sep>50"`. Две цифры, разделитель — параметр: VM передаёт
-    `Locale.current.decimalSeparator`, а `Money(parsing:)` принимает и `,`, и `.`;
+    `.comma`, только если `Locale.current.decimalSeparator == ","`, иначе `.period` (`Money(parsing:)`
+    принимает и `,`, и `.`, но не другие знаки вроде `٫`);
   - `parts` → `PartDraft(id: part.id, name:, partNumber: part.partNumber ?? "", unitPriceText:, quantityText:)`.
     `id` части сохраняется, чтобы правка не пересоздавала части в sync;
   - `date` и `notes` — как есть.
@@ -176,7 +177,7 @@ public struct UpdateServiceRecord: Sendable {
     `.remove`, если чек был, иначе `.keep`. `loadReceipt` (generation-счётчик) ставит `.picked`,
     `removeReceipt()` ставит `.none`. Текущее `receipt: Data?` заменяется на вычисляемое
     `receiptPreview`.
-  - Черновик при правке — `ServiceRecordDraft(record:decimalSeparator: Locale.current…)`.
+  - Черновик при правке — `ServiceRecordDraft(record:decimalSeparator:)`: `.comma`, если `Locale.current.decimalSeparator == ","`, иначе `.period`.
   - `save()`:
     - в режиме `add` — как сейчас;
     - в режиме `edit` — `updateServiceRecord.execute(draft:original:receipt:)`;
