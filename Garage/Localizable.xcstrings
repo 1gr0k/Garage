@@ -1049,6 +1049,26 @@
         }
       }
     },
+    "Vehicle Deleted" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Машина удалена"
+          }
+        }
+      }
+    },
+    "This vehicle was deleted on another device." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Эта машина была удалена на другом устройстве."
+          }
+        }
+      }
+    },
     "This record was deleted on another device." : {
       "localizations" : {
         "ru" : {

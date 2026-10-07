@@ -85,6 +85,11 @@ struct ServiceRecordFormView: View {
             } message: {
                 Text("This record was deleted on another device.")
             }
+            .alert("Vehicle Deleted", isPresented: $viewModel.vehicleGone) {
+                Button("OK") { dismiss() }
+            } message: {
+                Text("This vehicle was deleted on another device.")
+            }
             .confirmationDialog("Delete this record?", isPresented: $isConfirmingDelete, titleVisibility: .visible) {
                 Button("Delete Record", role: .destructive) {
                     Task { if await viewModel.delete() { dismiss() } }

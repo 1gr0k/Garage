@@ -36,6 +36,9 @@ final class ServiceRecordFormViewModel {
     var receiptFailed = false
     /// Запись исчезла (например, удалена на другом устройстве): вью показывает алерт и закрывает форму.
     var recordGone = false
+    /// Машину удалили, пока форма была открыта (например, на другом устройстве): вью показывает алерт и
+    /// закрывает форму.
+    var vehicleGone = false
 
     let mode: Mode
     let currentMileageKm: Int
@@ -160,6 +163,8 @@ final class ServiceRecordFormViewModel {
             errors = failure.fields
         } catch RepositoryError.recordNotFound {
             recordGone = true
+        } catch RepositoryError.vehicleNotFound {
+            vehicleGone = true
         } catch {
             saveFailed = true
         }

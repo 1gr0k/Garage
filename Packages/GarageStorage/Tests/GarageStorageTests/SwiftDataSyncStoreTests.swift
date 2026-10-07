@@ -122,6 +122,38 @@ private func vehicleRef(_ vehicle: Vehicle) -> EntityRef { EntityRef(kind: .vehi
         #expect(try await store.pendingChange(for: vehicleRef(vehicle)) == nil)
     }
 
+    /// Контракт `SyncStore.apply`: tombstone машины снимает pending-upsert'ы её записей, pending-delete остаётся.
+    @Test func applyingVehicleTombstoneDropsRecordUpserts() async throws {
+        let container = try GarageStore.makeContainer(inMemory: true)
+        let vehicle = Vehicle.samples[0]
+        try VehicleLog.add(vehicle, in: container)
+        let kept = try makeSyncRecord(for: vehicle, notes: "ждёт отправки")
+        let deleted = try makeSyncRecord(for: vehicle, notes: "удалена")
+        let unrelated = Vehicle.samples[1]
+        try VehicleLog.add(unrelated, in: container)
+        let other = try makeSyncRecord(for: unrelated)
+        try ServiceLog.add(kept, toVehicleWithID: vehicle.id, in: container)
+        try ServiceLog.add(deleted, toVehicleWithID: vehicle.id, in: container)
+        try ServiceLog.add(other, toVehicleWithID: unrelated.id, in: container)
+        try ServiceLog.delete(id: deleted.id, in: container)
+        let store = SwiftDataSyncStore(modelContainer: container)
+
+        try await store.apply(
+            RemoteChange(version: 8, operation: .delete(vehicleRef(vehicle))), for: vehicleRef(vehicle))
+
+        let refs = try await store.pendingChanges().map(\.operation.ref)
+        #expect(
+            refs == [
+                EntityRef(kind: .vehicle, id: unrelated.id), EntityRef(kind: .serviceRecord, id: deleted.id),
+                EntityRef(kind: .serviceRecord, id: other.id),
+            ])
+        #expect(try await store.pendingChange(for: EntityRef(kind: .serviceRecord, id: kept.id)) == nil)
+        #expect(
+            try await store.pendingChange(for: EntityRef(kind: .serviceRecord, id: deleted.id))?.operation.isDelete
+                == true)
+        #expect(try ModelContext(container).fetchCount(FetchDescriptor<ServiceRecordEntity>()) == 1)
+    }
+
     @Test func localOnlyDeleteLeavesVersionUntouched() async throws {
         let container = try GarageStore.makeContainer(inMemory: true)
         let vehicle = Vehicle.samples[0]

@@ -115,7 +115,11 @@ public actor SwiftDataSyncStore: ModelActor, SyncStore, ReceiptBlobStore {
     private func delete(_ ref: EntityRef) throws {
         switch ref.kind {
         case .vehicle:
-            if let entity = try vehicleEntity(ref.id) { modelContext.delete(entity) }
+            if let entity = try vehicleEntity(ref.id) {
+                // Контракт `SyncStore.apply`: записи уходят каскадом, их pending-upsert'ы — вместе с ними.
+                try SyncQueue.dropPendingUpserts(ofRecordsOf: entity, in: modelContext)
+                modelContext.delete(entity)
+            }
         case .serviceRecord:
             if let entity = try recordEntity(ref.id) { modelContext.delete(entity) }
         }

@@ -325,6 +325,18 @@ struct ServiceRecordFormViewModelTests {
         #expect(!model.saveFailed)
     }
 
+    @Test func missingVehicleOnAddSetsVehicleGone() async throws {
+        let repository = FakeRecordRepository()
+        await repository.failWith(RepositoryError.vehicleNotFound(vehicleID))
+        let model = makeModel(repository: repository)
+        model.draft.mileageText = "1500"
+
+        #expect(!(await model.save()))
+
+        #expect(model.vehicleGone)
+        #expect(!model.saveFailed && !model.recordGone)
+    }
+
     @Test func otherUpdateFailureSetsSaveFailed() async throws {
         let repository = FakeRecordRepository()
         await repository.failUpdate(with: TestFailure())
