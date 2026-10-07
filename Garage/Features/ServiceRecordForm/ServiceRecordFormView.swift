@@ -8,6 +8,7 @@ struct ServiceRecordFormView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var viewModel: ServiceRecordFormViewModel
     @State private var photoItem: PhotosPickerItem?
+    @State private var isConfirmingDelete = false
 
     /// ViewModel лежит в `@State`: перерисовка родителя не должна сбрасывать введённое.
     init(viewModel: ServiceRecordFormViewModel) {
@@ -45,9 +46,15 @@ struct ServiceRecordFormView: View {
                     TextField("Notes", text: $viewModel.draft.notes, axis: .vertical)
                 }
                 receiptSection
+                if viewModel.isEditing {
+                    Section {
+                        Button("Delete Record", role: .destructive) { isConfirmingDelete = true }
+                            .disabled(viewModel.isBusy)
+                    }
+                }
             }
             .scrollDismissesKeyboard(.interactively)
-            .navigationTitle("New Record")
+            .navigationTitle(viewModel.isEditing ? "Edit Record" : "New Record")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -57,7 +64,7 @@ struct ServiceRecordFormView: View {
                     Button("Save") {
                         Task { if await viewModel.save() { dismiss() } }
                     }
-                    .disabled(isPhotoPending || viewModel.isSaving)
+                    .disabled(isPhotoPending || viewModel.isBusy)
                 }
             }
             .alert("Couldn't Save", isPresented: $viewModel.saveFailed) {
@@ -68,11 +75,29 @@ struct ServiceRecordFormView: View {
             .alert("Couldn't Load Photo", isPresented: $viewModel.receiptFailed) {
                 Button("OK") {}
             }
+            .alert("Couldn't Delete", isPresented: $viewModel.deleteFailed) {
+                Button("OK") {}
+            } message: {
+                Text("The record could not be deleted. Please try again.")
+            }
+            .alert("Record Deleted", isPresented: $viewModel.recordGone) {
+                Button("OK") { dismiss() }
+            } message: {
+                Text("This record was deleted on another device.")
+            }
+            .confirmationDialog("Delete this record?", isPresented: $isConfirmingDelete, titleVisibility: .visible) {
+                Button("Delete Record", role: .destructive) {
+                    Task { if await viewModel.delete() { dismiss() } }
+                }
+            } message: {
+                Text("This can't be undone.")
+            }
         }
     }
 
-    /// Фото выбрано, но ещё не готово (или его загрузка вот-вот начнётся).
-    private var isPhotoPending: Bool { photoItem != nil && viewModel.receipt == nil }
+    /// Фото выбрано, но ещё не готово: читается из библиотеки (`photoItem` сбрасывается по завершении)
+    /// или подготавливается.
+    private var isPhotoPending: Bool { photoItem != nil || viewModel.isPreparingReceipt }
 
     private var partsSection: some View {
         @Bindable var viewModel = viewModel
@@ -100,20 +125,30 @@ struct ServiceRecordFormView: View {
 
     private var receiptSection: some View {
         Section("Receipt") {
-            if let receipt = viewModel.receipt, let image = UIImage(data: receipt) {
+            if let receipt = viewModel.receiptPreview, let image = UIImage(data: receipt) {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFit()
                     .frame(maxHeight: 200)
-                Button("Remove Photo", role: .destructive) {
-                    viewModel.removeReceipt()
-                    photoItem = nil
-                }
+                receiptButtons
+            } else if viewModel.isReceiptPending {
+                Text("The receipt photo hasn't been downloaded yet.")
+                    .foregroundStyle(.secondary)
+                receiptButtons
             } else {
                 PhotosPicker("Attach Receipt Photo", selection: $photoItem, matching: .images)
             }
         }
         .task(id: photoItem) { await loadPhoto(photoItem) }
+    }
+
+    @ViewBuilder
+    private var receiptButtons: some View {
+        PhotosPicker("Replace Photo", selection: $photoItem, matching: .images)
+        Button("Remove Photo", role: .destructive) {
+            viewModel.removeReceipt()
+            photoItem = nil
+        }
     }
 
     @ViewBuilder
@@ -152,7 +187,9 @@ struct ServiceRecordFormView: View {
         let data = try? await item.loadTransferable(type: Data.self)
         guard !Task.isCancelled, item == photoItem else { return }
         await viewModel.loadReceipt(data)
-        if viewModel.receipt == nil, !Task.isCancelled, item == photoItem { photoItem = nil }
+        guard !Task.isCancelled, item == photoItem else { return }
+        // Освобождаем выбор, чтобы тот же снимок можно было выбрать снова.
+        photoItem = nil
     }
 }
 

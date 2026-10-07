@@ -2,8 +2,9 @@ import Foundation
 import GarageCore
 import SwiftData
 
-/// `ServiceRecordRepository` поверх SwiftData. Очередь синхронизации ведёт `ServiceLog.add`.
-public struct SwiftDataServiceRecordRepository: ServiceRecordRepository {
+/// `ServiceRecordRepository` и `ServiceRecordEditing` поверх SwiftData. Очередь синхронизации ведут
+/// `ServiceLog.add` / `update` / `delete`.
+public struct SwiftDataServiceRecordRepository: ServiceRecordRepository, ServiceRecordEditing {
     private let container: ModelContainer
 
     public init(container: ModelContainer) {
@@ -16,6 +17,18 @@ public struct SwiftDataServiceRecordRepository: ServiceRecordRepository {
         } catch ServiceLogError.vehicleNotFound(let id) {
             throw RepositoryError.vehicleNotFound(id)
         }
+    }
+
+    public func update(_ record: ServiceRecord, receipt: ReceiptChange) async throws {
+        do {
+            try ServiceLog.update(record, receipt: receipt, in: container)
+        } catch ServiceLogError.recordNotFound(let id) {
+            throw RepositoryError.recordNotFound(id)
+        }
+    }
+
+    public func delete(id: ServiceRecord.ID) async throws {
+        try ServiceLog.delete(id: id, in: container)
     }
 }
 

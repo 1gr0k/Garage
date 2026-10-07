@@ -37,6 +37,28 @@ extension Sequence where Element == VehicleEntity {
     }
 }
 
+/// Всё, что нужно форме правки записи.
+public struct ServiceRecordEditingSnapshot: Identifiable, Hashable, Sendable {
+    public var record: ServiceRecord
+    public var hasReceipt: Bool
+    /// `nil`, если чека нет или его байты ещё не скачаны (`hasReceipt == true`).
+    public var receiptImage: Data?
+
+    public var id: ServiceRecord.ID { record.id }
+
+    public init(record: ServiceRecord, hasReceipt: Bool, receiptImage: Data?) {
+        self.record = record
+        self.hasReceipt = hasReceipt
+        self.receiptImage = receiptImage
+    }
+}
+
+extension ServiceRecordEntity {
+    public func editingSnapshot() throws -> ServiceRecordEditingSnapshot {
+        ServiceRecordEditingSnapshot(record: try toDomain(), hasReceipt: hasReceipt, receiptImage: receiptImage)
+    }
+}
+
 extension Sequence where Element == ServiceRecordEntity {
     public func validRecords() -> [ServiceRecord] {
         compactMap { entity in

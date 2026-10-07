@@ -5,13 +5,26 @@ import SwiftUI
 
 struct VehicleDetailView: View {
     @Environment(AppDependencies.self) private var dependencies
+    let vehicleID: Vehicle.ID
+
+    var body: some View {
+        VehicleDetailContent(vehicleID: vehicleID, viewModel: dependencies.makeVehicleDetailViewModel())
+    }
+}
+
+/// ViewModel лежит в `@State`: перерисовка родителя не должна сбрасывать диалог подтверждения.
+private struct VehicleDetailContent: View {
+    @Environment(AppDependencies.self) private var dependencies
     @Query private var vehicleEntities: [VehicleEntity]
     @Query private var recordEntities: [ServiceRecordEntity]
+    @State private var viewModel: VehicleDetailViewModel
     @State private var isAddingRecord = false
+    @State private var editing: ServiceRecordEditingSnapshot?
 
-    init(vehicleID: Vehicle.ID) {
+    init(vehicleID: Vehicle.ID, viewModel: VehicleDetailViewModel) {
         _vehicleEntities = Query(filter: #Predicate { $0.id == vehicleID })
         _recordEntities = Query(ServiceRecordEntity.descriptor(forVehicle: vehicleID))
+        _viewModel = State(initialValue: viewModel)
     }
 
     private var receiptIDs: Set<UUID> {
@@ -30,6 +43,7 @@ struct VehicleDetailView: View {
         let records = recordEntities.validRecords()
         let receiptIDs = receiptIDs
         let mileage = vehicle.currentMileageKm(records: records)
+        @Bindable var viewModel = viewModel
         return List {
             Section {
                 LabeledContent("Mileage", value: mileage.kilometers)
@@ -37,7 +51,19 @@ struct VehicleDetailView: View {
             }
             Section("Service History") {
                 ForEach(records) { record in
-                    ServiceRecordRow(record: record, hasReceipt: receiptIDs.contains(record.id))
+                    Button {
+                        editing = snapshot(of: record.id)
+                    } label: {
+                        ServiceRecordRow(record: record, hasReceipt: receiptIDs.contains(record.id))
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    // Без `role: .destructive`: иначе List уберёт строку ещё до подтверждения.
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button("Delete") { viewModel.pendingDeletion = record.id }
+                            .tint(.red)
+                            .disabled(viewModel.isDeleting)
+                    }
                 }
             }
         }
@@ -57,6 +83,39 @@ struct VehicleDetailView: View {
                 viewModel: dependencies.makeServiceRecordFormViewModel(
                     vehicleID: vehicle.id, currentMileageKm: mileage))
         }
+        .sheet(item: $editing) { snapshot in
+            // Пробег без самой записи: правка может его уменьшить.
+            let others = records.filter { $0.id != snapshot.id }
+            ServiceRecordFormView(
+                viewModel: dependencies.makeServiceRecordFormViewModel(
+                    editing: snapshot.record, hasStoredReceipt: snapshot.hasReceipt,
+                    storedReceipt: snapshot.receiptImage,
+                    currentMileageKm: vehicle.currentMileageKm(records: others)))
+        }
+        .confirmationDialog(
+            "Delete this record?",
+            isPresented: Binding(
+                get: { viewModel.pendingDeletion != nil },
+                set: { if !$0 { viewModel.pendingDeletion = nil } }),
+            titleVisibility: .visible,
+            presenting: viewModel.pendingDeletion
+        ) { id in
+            Button("Delete Record", role: .destructive) {
+                Task { await viewModel.delete(id: id) }
+            }
+        } message: { _ in
+            Text("This can't be undone.")
+        }
+        .alert("Couldn't Delete", isPresented: $viewModel.deleteFailed) {
+            Button("OK") {}
+        } message: {
+            Text("The record could not be deleted. Please try again.")
+        }
+    }
+
+    private func snapshot(of id: ServiceRecord.ID) -> ServiceRecordEditingSnapshot? {
+        guard let entity = recordEntities.first(where: { $0.id == id }) else { return nil }
+        return try? entity.editingSnapshot()
     }
 }
 
