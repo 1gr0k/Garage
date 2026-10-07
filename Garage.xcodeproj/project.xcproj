@@ -104,6 +104,9 @@
       "product": "Products/GarageTests.xctest",
       "product-type": "bundle.unit-test",
       "test-host-target": "Garage",
+      "dependencies": [
+        "Garage",
+      ],
       "build-phases": [
         "compile-sources",
         "frameworks",
