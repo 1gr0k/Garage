@@ -154,8 +154,15 @@ In-flight. Батч уже прочитан и отправлен, в нём ups
   очереди `[delete R, delete V]`, сервер (`FakeHTTPTransport`) отвечает `applied` на оба. Pull приносит
   tombstones. В `report.rejected` пусто, очередь пуста, sync не бросает.
 - A, `SyncEngineTests.swift`: `remoteVehicleDeleteDropsPendingRecordUpserts` (контракт `apply` на
-  `InMemorySyncStore`). Локально новая R к V в очереди. Pull приносит tombstone V → R удалена,
-  pending R нет, следующий push пустой.
+  `InMemorySyncStore`). V и R3 синхронизированы, очередь пуста. Во время pull (после push) добавлена
+  новая R к V и удалена R3. Pull приносит tombstone V → R удалена, pending R нет, в очереди только
+  `delete R3`, следующий push несёт только его. Отклонение от исходного сценария («R в очереди до sync»):
+  движок всегда делает push перед pull, и push сам снял бы upsert R (`markApplied` или `rejected` →
+  `apply(.delete(R))`), так что tombstone нечего было бы снимать.
+- A, `GarageSyncTests/ReceiptTests.swift`: `vehicleTombstoneDropsRecordUpsertHeldByReceiptFailure`.
+  Upsert R с чеком стоит в очереди до sync, загрузка чека отклонена (`payloadTooLarge`), push его
+  придерживает. Pull приносит tombstone V → очередь пуста, R и V удалены. Единственный случай, когда
+  upsert, стоявший до sync, доживает до tombstone; тест падает без снятия upsert'а в каскаде `apply`.
 - B, `VehicleLogTests.swift`: `deleteDropsPendingRecordUpsertsKeepsDeletes`. У V запись R1 с
   pending-upsert (правка) и R2 с pending-upsert (создание). R3 удалена ранее (pending-delete). После
   `VehicleLog.delete(V)` в очереди `[delete R3, delete V]` в порядке `sequence`.
@@ -375,6 +382,7 @@ public struct UpdateVehicle: Sendable {
   `vehicleDeleteWithKeptRecordDeletesPushesCleanly`, `remoteVehicleDeleteDropsPendingRecordUpserts`,
   `newRecordForRemotelyDeletedVehicleIsDroppedLocally`, `editOfRemotelyDeletedVehicleDeletesItLocally`,
   `seededVehicleOverTombstoneIsDeletedLocally`.
+- Новый тест в `ReceiptTests.swift`: `vehicleTombstoneDropsRecordUpsertHeldByReceiptFailure` (пункт 2).
 - Если какой-то тест покажет, что `SyncEngine` ведёт себя не так, как описано в разделе «Каскадное
   удаление», код движка в A не правится. Расхождение записывается в отчёт PR, план обновляется, решение
   принимается до B.
@@ -450,6 +458,9 @@ public struct UpdateVehicle: Sendable {
   - Зависимости: `AddVehicle`, `UpdateVehicle`, `currentYear: () -> Int` (замыканием из composition
     root).
   - `draft`, `errors: [VehicleDraft.Field: VehicleDraft.FieldError]`, `isSaving`.
+  - В режиме `edit` форма правки показывает ошибки полей сразу при открытии: черновик исходной машины
+    проверяется в `init`, и `errors` заполняется (машина из синхронизации может не пройти проверку
+    черновика, а `UpdateVehicle` не сохранит её, пока поля не исправлены).
   - `save() async -> Bool`: `VehicleDraft.Errors` → `errors`; `vehicleNotFound` в режиме `edit` →
     `vehicleGone`; прочее → `saveFailed`. Повторный вызов во время работы игнорируется.
   - `recordsMileageKm: Int?` — для подсказки «По записям» (решение 5); передаёт вызывающий.
@@ -463,7 +474,8 @@ public struct UpdateVehicle: Sendable {
   `delete(id:) async`, `deleteFailed`, `isDeleting` — зеркало `VehicleDetailViewModel` для записей.
 - `GarageTests/Fakes.swift`: `FakeVehicleRepository` с `Gate`.
 - Тесты:
-  - `VehicleFormViewModelTests`: черновик правки заполнен; ошибки в `errors`; add и edit вызывают
+  - `VehicleFormViewModelTests`: черновик правки заполнен; невалидная исходная машина → ошибки в
+    `errors` сразу после открытия; ошибки в `errors`; add и edit вызывают
     нужный use case; без изменений порт не вызван; `vehicleNotFound` → `vehicleGone`; сбой →
     `saveFailed`; повторный `save` при закрытом `Gate` даёт один вызов.
   - `VehicleListViewModelTests`: подтверждение → delete; сбой → `deleteFailed`; отмена → нет вызова;
@@ -491,7 +503,7 @@ public struct UpdateVehicle: Sendable {
   - `Form`: `Picker` типа (`VehicleKind` → локализованное имя в `Garage/Shared/`);
   - `TextField` марки и модели;
   - год и пробег с `.keyboardType(.numberPad)`;
-  - ошибки под полями, как в `ServiceRecordFormView`;
+  - ошибки под полями, как в `ServiceRecordFormView`; в режиме правки они видны сразу при открытии;
   - подсказка «По записям: N км»;
   - заголовок «Новая машина» / «Правка машины»;
   - алерты `saveFailed` и `vehicleGone`.
@@ -564,7 +576,7 @@ valid number, Mileage, km, Vehicle Not Found, This can't be undone.
 | Пункт | A (Linux) | B (Storage / e2e) |
 |---|---|---|
 | 1. Только delete машины | `cascadeCoversRecordsTheDeletingDeviceNeverSaw` | `deleteQueuesOnlyVehicleDelete`, `deleteWithoutVersionStillQueuesDelete`, `deleteOfUnsentVehicleCollapsesIntoDelete`, `vehicleDeleteCascadesToAnotherDevice` |
-| 2. Очередь записей | `queueOrderAroundVehicleDelete`, `vehicleDeleteWithKeptRecordDeletesPushesCleanly`, `remoteVehicleDeleteDropsPendingRecordUpserts` | `deleteDropsPendingRecordUpsertsKeepsDeletes`, `applyingVehicleTombstoneDropsRecordUpserts`, `deletingVehicleWithUnsyncedRecordPushesWithoutRejections`, `vehicleDeletedWhilePushIsInFlight` |
+| 2. Очередь записей | `queueOrderAroundVehicleDelete`, `vehicleDeleteWithKeptRecordDeletesPushesCleanly`, `remoteVehicleDeleteDropsPendingRecordUpserts`, `vehicleTombstoneDropsRecordUpsertHeldByReceiptFailure` | `deleteDropsPendingRecordUpsertsKeepsDeletes`, `applyingVehicleTombstoneDropsRecordUpserts`, `deletingVehicleWithUnsyncedRecordPushesWithoutRejections`, `vehicleDeletedWhilePushIsInFlight` |
 | 3. Гонка устройств | `secondDeviceEditsAfterVehicleDelete`, `newRecordForRemotelyDeletedVehicleIsDroppedLocally`, `editOfRemotelyDeletedVehicleDeletesItLocally` | `recordAddedToVehicleDeletedOnAnotherDevice` |
 | 4. Демо-машины | `sampleVehicleCannotBeRecreatedAfterDelete`, `seededVehicleOverTombstoneIsDeletedLocally` | `seedingDoesNotRecreateDeletedSampleVehicle`, `deletedSampleVehicleStaysDeletedOnNewDevice` |
 | 5. Чеки | `receiptBlobOutlivesCascadedRecord` | `deleteRemovesReceiptBytes`, `pendingReceiptDownloadIsDroppedWithVehicle` |
@@ -580,6 +592,7 @@ valid number, Mileage, km, Vehicle Not Found, This can't be undone.
   сервер и устройство расходятся. Этот риск уже есть у удаления записей (этап 9). Здесь он крупнее, потому
   что pending-upsert'ы записей сняты. Повторять `internal` или нет — решение для `SyncEngine`, в этом
   этапе не меняется. Записать в отчёт.
+- **Лишняя правка в отчёте sync.** `report.stillPending` считается до pull (`SyncEngine.swift:120`), поэтому upsert записи, придержанный push'ем и снятый tombstone'ом машины, всё равно попадает в отчёт; было и до этапа, здесь случается чаще — не меняется.
 - **Устаревшая форма правки.** Форма открыта, а машину правят на другом устройстве. Как на этапе 9:
   LWW по сущности целиком, снимок формы перезапишет чужие поля.
 - **`FakeSyncServer` расходится с контрактом.** Upsert с `baseVersion` по неизвестному id он отклоняет

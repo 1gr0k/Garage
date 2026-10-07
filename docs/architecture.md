@@ -155,7 +155,8 @@ ViewModel (`makeServiceRecordFormViewModel(vehicleID:currentMileageKm:)`) и о�
   не отклоняется, а каскад пропускает уже удалённые записи.
 - То же действует при удалении машины с сервера: контракт `SyncStore.apply` — удаление машины удаляет
   её записи и pending-upsert'ы этих записей (`InMemorySyncStore` в тестах GarageSync повторяет это).
-  Код `SyncEngine` не меняется.
+  Код `SyncEngine` не меняется. `SwiftDataSyncStore` выполняет этот контракт с части B; до неё
+  оставшийся upsert записи получит `rejected/vehicleNotFound`, и движок удалит запись локально.
 - Запись, добавленная к машине, которую уже удалили на другом устройстве, теряется («удаление
   побеждает»): push даёт `rejected/vehicleNotFound`, движок удаляет запись локально, pull приносит
   tombstone машины. Демо-машины с фиксированными UUID по той же причине не воскресают на новом

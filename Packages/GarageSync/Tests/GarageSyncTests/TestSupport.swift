@@ -153,8 +153,8 @@ actor InMemorySyncStore: SyncStore {
         queue.removeAll { $0.operation.ref == ref }
     }
 
-    /// Каскад как в SwiftData-адаптере: записи машины удаляются вместе с pending-upsert'ами,
-    /// pending-delete записей (их сущностей уже нет) остаются.
+    /// Каскад, как требует контракт `SyncStore.apply`: записи машины удаляются вместе с pending-upsert'ами.
+    /// Условие `!isDelete` защитное: у записи с pending-delete сущности уже нет, в `records` её не найти.
     private func dropRecords(ofVehicle id: UUID) {
         let recordIDs = records.values.filter { $0.record.vehicleID == id }.map(\.record.id)
         for recordID in recordIDs {

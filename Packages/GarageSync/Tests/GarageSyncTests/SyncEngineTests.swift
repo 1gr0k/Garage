@@ -625,7 +625,12 @@ private func applied(_ id: UUID, version: Int64) -> PushResult {
         #expect(await store.stored(IDs.record) == nil)
     }
 
-    /// П. 2: tombstone машины из pull удаляет её записи и их pending-upsert'ы; pending-delete записей остаются.
+    /// П. 2: tombstone машины из pull удаляет её записи и их pending-upsert'ы.
+    /// Правки делаются во время pull: push всегда идёт раньше и сам снял бы upsert, стоявший до sync.
+    /// Upsert, стоявший до sync и придержанный push'ем, — `vehicleTombstoneDropsRecordUpsertHeldByReceiptFailure`.
+    /// `delete R3` остаётся, потому что сущности R3 уже нет и каскад её не видит; условие `!isDelete`
+    /// в `InMemorySyncStore.dropRecords` этим тестом не проверяется (состояние «сущность есть, в очереди
+    /// её delete» недостижимо).
     @Test func remoteVehicleDeleteDropsPendingRecordUpserts() async throws {
         let store = InMemorySyncStore()
         await store.storeSynced(.vehicle(makeVehicle()), version: 1)
@@ -695,6 +700,7 @@ private func applied(_ id: UUID, version: Int64) -> PushResult {
     }
 
     /// П. 3: правка машины, удалённой на другом устройстве, и новая запись к ней в том же батче.
+    /// Снятие pending-upsert'а записи каскадом здесь не проверяется: R убирает `rejected` → `apply(.delete(R))`.
     @Test func editOfRemotelyDeletedVehicleDeletesItLocally() async throws {
         let store = InMemorySyncStore()
         await store.storeSynced(.vehicle(makeVehicle()), version: 1)
