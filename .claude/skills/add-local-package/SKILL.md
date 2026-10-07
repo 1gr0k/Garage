@@ -40,8 +40,8 @@ description: Чек-лист добавления нового локально�
 - [ ] **Architecture**: пункт про `Packages/<Name>` — назначение, платформы, зависимости, как тестируется.
 - [ ] **Commands**: команда тестов пакета.
 - [ ] **Rules** (при необходимости): ограничения импортов (Linux), «X только в `<Name>`» и т. п.
-- [ ] **Definition of done**: пункт с тестами нового пакета.
+- [ ] **`scripts/check.sh`**: добавить пакет в нужную секцию — Linux-пакет в список `swift test` секции `linux`, iOS-only пакет в `xcodebuild test` секции `ios`. В «Definition of done» CLAUDE.md ничего добавлять не нужно.
 
 ## 5. Definition of done
 
-Пройти весь список из `CLAUDE.md` → «Definition of done» (после обновления на шаге 4) и сообщить о каждом пункте.
+Запустить `scripts/check.sh` (после шага 4) и выполнить остальные пункты из `CLAUDE.md` → «Definition of done»; сообщить о каждом пункте.

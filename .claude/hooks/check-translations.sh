@@ -17,17 +17,7 @@ changed=$({
 } 2>/dev/null | grep -E '^Garage/(.*\.swift|Localizable\.xcstrings)$' || true)
 [[ -n "$changed" ]] || exit 0
 
-keys=$(jq -r '.strings | to_entries[]
-  | select(.value.shouldTranslate != false)
-  | .key as $k | .value as $v | $v.localizations.ru as $ru
-  | select($v.extractionState == "stale"
-      or $ru == null
-      or ([$ru | .. | .state? // empty] | any(. != "translated"))
-      or ($ru.variations.plural != null
-          and ([$ru.variations.plural | has("one","few","many","other")] | all | not)))
-  | $k' "$catalog")
-[[ -n "$keys" ]] || exit 0
-
-echo "Untranslated keys: $(paste -sd ',' - <<<"$keys" | sed 's/,/, /g')" >&2
-echo "Add/fix the ru translations in $catalog (state: translated; plurals need one/few/many/other)." >&2
-exit 2
+if ! out=$(scripts/check.sh --only strings 2>&1); then
+    echo "$out" >&2
+    exit 2
+fi

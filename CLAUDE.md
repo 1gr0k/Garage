@@ -62,19 +62,5 @@ This is the new Xcode 27 JSON-based project format (JSON with trailing commas), 
 
 ## Definition of done
 
-1. `swift test --package-path Packages/GarageCore`, `swift test --package-path Packages/GarageSync` and `swift test --package-path Packages/GarageAPI` pass.
-2. `xcodebuild test` for GarageStorage passes (see Commands; destination from `CLAUDE.local.md`).
-3. The app builds with the `xcodebuild … build` command above.
-4. If `project.xcproj` changed: `xcprojformatter --update` was run and `git diff` of it is minimal.
-5. The catalog is fully translated: this command prints nothing (it lists keys that are stale, lack `ru`, have a `ru` state other than `translated`, or have a `ru` plural missing one/few/many/other):
-   ```sh
-   jq -r '.strings | to_entries[]
-     | select(.value.shouldTranslate != false)
-     | .key as $k | .value as $v | $v.localizations.ru as $ru
-     | select($v.extractionState == "stale"
-         or $ru == null
-         or ([$ru | .. | .state? // empty] | any(. != "translated"))
-         or ($ru.variations.plural != null
-             and ([$ru.variations.plural | has("one","few","many","other")] | all | not)))
-     | $k' Garage/Localizable.xcstrings
-   ```
+1. `scripts/check.sh` passes. It runs the `linux` (package and Server tests), `ios` (GarageStorage tests on the simulator, app build) and `strings` (catalog fully translated) sections; `--only <section>` runs one. Destination comes from `$SIM_DESTINATION` or `CLAUDE.local.md`. New packages are added to the matching section of the script.
+2. If `project.xcproj` changed: `xcprojformatter --update` was run and `git diff` of it is minimal.
