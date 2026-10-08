@@ -22,6 +22,26 @@ extension ServiceTypeChoice {
     }
 }
 
+extension ServiceTypeChoice {
+    /// Тип работ из выбора формы. Для `.other` — обрезанный текст; `nil`, если текст пуст.
+    /// Общий для форм записи и правила.
+    func serviceType(otherText: String) -> ServiceType? {
+        switch self {
+        case .oilChange: return .oilChange
+        case .filters: return .filters
+        case .tires: return .tires
+        case .brakes: return .brakes
+        case .chain: return .chain
+        case .suspension: return .suspension
+        case .inspection: return .inspection
+        case .repair: return .repair
+        case .other:
+            let text = otherText.trimmingCharacters(in: .whitespacesAndNewlines)
+            return text.isEmpty ? nil : .other(text)
+        }
+    }
+}
+
 /// Editable state of one part row in the service record form. All numbers are raw text.
 public struct PartDraft: Identifiable, Hashable, Sendable {
     public var id: UUID
@@ -196,23 +216,11 @@ public struct ServiceRecordDraft: Hashable, Sendable {
     }
 
     private func makeServiceType(into errors: inout [Field: FieldError]) -> ServiceType? {
-        switch serviceTypeChoice {
-        case .oilChange: return .oilChange
-        case .filters: return .filters
-        case .tires: return .tires
-        case .brakes: return .brakes
-        case .chain: return .chain
-        case .suspension: return .suspension
-        case .inspection: return .inspection
-        case .repair: return .repair
-        case .other:
-            let text = otherServiceTypeText.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !text.isEmpty else {
-                errors[.otherServiceType] = .required
-                return nil
-            }
-            return .other(text)
+        guard let serviceType = serviceTypeChoice.serviceType(otherText: otherServiceTypeText) else {
+            errors[.otherServiceType] = .required
+            return nil
         }
+        return serviceType
     }
 
     private func makePart(_ draft: PartDraft, into errors: inout [Field: FieldError]) -> Part? {

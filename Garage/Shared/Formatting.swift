@@ -91,6 +91,10 @@ extension ValidationError {
         case .amountTooLarge: "Amount can't exceed \(Money.maxAmount.formattedWhole)"
         case .emptyServiceTypeDescription: "Required"
         case .invalidAmount: "Enter a valid amount"
+        case .noInterval: "Choose a time or mileage interval"
+        case .periodOutOfRange: "Interval is out of range"
+        case .distanceOutOfRange: "Distance must be from 1 to \(ServiceRecord.maxMileageKm.kilometers)"
+        case .unknownPeriod: "Unknown interval"
         }
     }
 }
