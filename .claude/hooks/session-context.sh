@@ -36,7 +36,8 @@ else
 fi
 
 # Последний по номеру этапа план: старые планы без отметки не считаются.
-plan=$(ls docs/plans/stage-*.md 2>/dev/null | sort -V | tail -n 1 || true)
+# Файлы заметок (`stage-N-имя-notes.md`, второй уровень плана) — не планы: отметки в них нет.
+plan=$(ls docs/plans/stage-*.md 2>/dev/null | grep -v -- '-notes\.md$' | sort -V | tail -n 1 || true)
 if [[ -n "$plan" ]] && ! grep -q 'Статус: выполнен' "$plan"; then
     echo "Plan not marked done: $plan"
 fi

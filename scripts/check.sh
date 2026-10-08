@@ -7,6 +7,9 @@
 # `ui` (XCUITest on en and ru, two simulators) is slow and local only: it is not part of the default run,
 # only `--only ui`. Env: UI_EXPECTED_LANGUAGE_EN / UI_EXPECTED_LANGUAGE_RU override the expected language
 # passed to `testRunsInExpectedLanguage` (to check that the test fails when the language is wrong).
+# UI_SERIAL=1 runs en and ru one after another (two simulators do not fit in memory on a small Mac).
+# Every UI `xcodebuild test-without-building` has XCTest timeouts per test (120 s default, 240 s max)
+# and an outer limit of $UI_DEADLINE seconds (default 900) per language: a hung run is killed.
 #   scripts/check.sh --test GarageCore|GarageSync|GarageAPI|Server <regex>   one `swift test --filter`
 #   scripts/check.sh --test GarageStorage|app|ui <Target/Suite/test>         one `xcodebuild -only-testing`
 #                                                                           (ui: language from $UI_LANG, default en)
@@ -218,6 +221,28 @@ ui_simulator() {
     printf '%s\n' "$udid"
 }
 
+# Таймауты XCTest на каждый тест: повисший тест падает с ошибкой, а не держит прогон.
+ui_test_timeouts=(-test-timeouts-enabled YES -default-test-execution-time-allowance 120 -maximum-test-execution-time-allowance 240)
+
+# На macOS нет `timeout`. Сторож убивает процесс, если он не закончился за <секунд> (по умолчанию
+# $UI_DEADLINE, 900). Таймауты XCTest этого не заменяют: после упавшего теста сам `xcodebuild`
+# может не завершиться (так было при мутации в B2), и их он не видит. Сторож выходит сам,
+# когда процесс закончился (проверка раз в секунду), поэтому его не нужно останавливать.
+# start_deadline <pid> <метка> [секунд]
+start_deadline() {
+    local pid=$1 label=$2 limit=${3:-${UI_DEADLINE:-900}} i
+    (
+        for ((i = 0; i < limit; i++)); do
+            sleep 1
+            kill -0 "$pid" 2>/dev/null || exit 0
+        done
+        echo "ui: $label did not finish in ${limit}s, killing xcodebuild (pid $pid)" >&2
+        kill "$pid" 2>/dev/null || exit 0
+        sleep 10
+        kill -9 "$pid" 2>/dev/null || true
+    ) &
+}
+
 # Регрессия вью: XCUITest на en и ru параллельно на двух симуляторах одной сборкой.
 # Не входит в общий прогон (медленно, нужны симуляторы): только `--only ui`.
 section_ui() {
@@ -247,8 +272,10 @@ section_ui() {
         TEST_RUNNER_GARAGE_EXPECTED_LANGUAGE=$expected xcodebuild test-without-building \
             -project Garage.xcodeproj -scheme GarageUITests -derivedDataPath "$build" \
             -destination "id=${udids[index]}" -testLanguage "$lang" -testRegion "$region" \
-            ${skip[@]+"${skip[@]}"} -resultBundlePath "$build/$lang.xcresult" >"$build/$lang.log" 2>&1 &
+            "${ui_test_timeouts[@]}" ${skip[@]+"${skip[@]}"} \
+            -resultBundlePath "$build/$lang.xcresult" >"$build/$lang.log" 2>&1 &
         pids+=($!)
+        start_deadline "${pids[index]}" "test $lang"
         index=$((index + 1))
         # UI_SERIAL=1: языки по очереди (на слабой или занятой машине два симулятора подвисают).
         if [[ -n "${UI_SERIAL:-}" ]]; then
@@ -352,7 +379,11 @@ test_run() {
             echo "==> test $lang -only-testing:$filter (Garage UI $lang: $udid)"
             TEST_RUNNER_GARAGE_EXPECTED_LANGUAGE=$expected xcodebuild test-without-building \
                 -project Garage.xcodeproj -scheme GarageUITests -derivedDataPath "$build" \
-                -destination "id=$udid" -testLanguage "$lang" -testRegion "$region" "-only-testing:$filter"
+                -destination "id=$udid" -testLanguage "$lang" -testRegion "$region" \
+                "${ui_test_timeouts[@]}" "-only-testing:$filter" &
+            local test_pid=$!
+            start_deadline "$test_pid" "test $lang"
+            wait "$test_pid"
             ;;
     esac
 }

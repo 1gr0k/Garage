@@ -4,13 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Toolchain
 
-Requires Xcode 27.2 (beta). `DEVELOPER_DIR` is already set via `.claude/settings.local.json` — do not export or prefix it; run `xcodebuild` / `swift` directly.
-
-```sh
-export DEVELOPER_DIR=/Applications/Xcode-27.2.0-Beta.2.app/Contents/Developer
-```
-
-Without it, `swift test` fails with `plugin for module 'TestingMacros' not found`.
+Requires Xcode 27.2 (beta). `DEVELOPER_DIR` is already set via `.claude/settings.local.json` — do not export or prefix it; run `xcodebuild` / `swift` directly. Terminal setup, the local server, CI details and UI-test timeouts: `docs/dev-setup.md`.
 
 ## Commands
 
@@ -38,11 +32,8 @@ scripts/check.sh
 scripts/check.sh --only architecture
 
 # UI tests (XCUITest, en and ru on two simulators `Garage UI en/ru`, created on first run; not part of the default run)
-scripts/check.sh --only ui              # UI_SERIAL=1 runs the languages one after another on a busy machine
-# one UI test: run by scheme, not -xctestrun (it ignores -testLanguage), after build-for-testing into .build/ui
-TEST_RUNNER_GARAGE_EXPECTED_LANGUAGE=en xcodebuild test-without-building -project Garage.xcodeproj -scheme GarageUITests \
-  -derivedDataPath .build/ui -destination 'id=<udid of Garage UI en>' -testLanguage en -testRegion US \
-  -only-testing:GarageUITests/VehicleTests/testAddVehicleShowsErrorsThenSaves
+scripts/check.sh --only ui              # timeouts and UI_SERIAL / UI_DEADLINE: docs/dev-setup.md
+scripts/check.sh --test ui GarageUITests/VehicleTests/testAddVehicleShowsErrorsThenSaves   # one UI test ($UI_LANG, default en)
 scripts/test-hooks.sh   # hook cases only (also run by the architecture section)
 ```
 
@@ -73,15 +64,7 @@ GarageCore: domain + use cases + port protocols (Foundation only)
 
 Put non-UI logic in `GarageCore` and keep the app target thin.
 
-### Local server for end-to-end checks
-
-```sh
-TMP=<scratchpad>/e2e; mkdir -p $TMP; openssl rand -hex 16 > $TMP/secret
-GARAGE_DB_PATH=$TMP/garage.sqlite GARAGE_SETUP_SECRET=$(cat $TMP/secret) \
-  swift run --package-path Server GarageServer serve --hostname 127.0.0.1 --port 8080   # run in background
-```
-
-In the simulator app use `http://127.0.0.1:8080` (plain http is accepted for localhost only) and the secret from `$TMP/secret`. Uninstall the app first (`xcrun simctl uninstall <udid> <bundle id>`) for a fresh database. The setup secret is never stored by the app.
+Local server for end-to-end checks (`swift run … GarageServer serve`, setup secret): `docs/dev-setup.md`.
 
 ## Project file (`Garage.xcodeproj/project.xcproj`)
 
@@ -108,7 +91,7 @@ This is the new Xcode 27 JSON-based project format (JSON with trailing commas), 
 
 ## CI
 
-`.github/workflows/ci.yml` (push to master, pull requests, manual dispatch): one job `linux` in the `swift:6.4-noble` container (the same toolchain as local Xcode 27.2, Swift 6.4) with `jq` installed. It runs `scripts/check.sh --only architecture`, `--only linux` and `--only strings` as separate steps. The `ios` section (Xcode, simulator) runs locally only. The `.build` directories of GarageCore, GarageAPI, GarageSync and Server are cached by a hash of `Package.resolved` + `Package.swift` (local packages have no `Package.resolved`). `scripts/test-hooks.sh` prints `SKIP` for the two format-xcproj cases that need `xcprojformatter` (macOS only).
+`.github/workflows/ci.yml`: one Linux job runs `scripts/check.sh --only architecture`, `--only linux`, `--only strings`; `ios` and `ui` run locally only. Details (container, cache): `docs/dev-setup.md`.
 
 ## Definition of done
 

@@ -193,6 +193,10 @@ context_case 'many files are collapsed to a count' '… and 3 more' present
 rm -f "$ctx"/extra*.txt "$ctx/b.txt"
 printf '# Stage 10\n\n**Статус: выполнен** — PR\n' >"$ctx/docs/plans/stage-10-new.md"
 context_case 'marked latest plan is silent' 'Plan not marked done' absent
+# Второй уровень плана (`-notes.md`) отметки не несёт и не должен считаться планом без статуса.
+printf '# Stage 10 notes\n\nno status here\n' >"$ctx/docs/plans/stage-10-new-notes.md"
+context_case 'notes file of a marked plan is silent' 'Plan not marked done' absent
+rm -f "$ctx/docs/plans/stage-10-new-notes.md"
 printf 'c\n' >"$ctx/c.txt"
 git -C "$ctx" add -A
 git -C "$ctx" -c user.name=hooks -c user.email=hooks@example.invalid commit -qm two
