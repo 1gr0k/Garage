@@ -9,7 +9,16 @@
       "Bash(git status*)",
       "Bash(git diff*)",
       "Bash(git log*)",
-      "Bash(mkdir -p docs/*)"
+      "Bash(mkdir -p docs/*)",
+      "Bash(scripts/check.sh*)",
+      "Bash(scripts/test-hooks.sh*)",
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Bash(git switch*)",
+      "Bash(gh pr create*)",
+      "Bash(gh pr view*)",
+      "Bash(gh pr checks*)",
+      "Bash(xcrun simctl*)"
     ],
     "ask":  ["Bash(git push*)"],
     "deny": [
