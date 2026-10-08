@@ -1,7 +1,7 @@
 ---
 name: ui-checker
 description: Visual check of iOS UI in the Simulator: truncation, layout, overlap, dark mode, Dynamic Type and how new or changed screens look on en and ru. Not for regression of existing flows — those are covered by `scripts/check.sh --only ui` (GarageUITests). Use PROACTIVELY after a visual UI change or for a new screen before it has UI tests. Keeps screenshots out of the main conversation.
-tools: Read, Bash, mcp__Claude_Code_iOS_Simulator__build, mcp__Claude_Code_iOS_Simulator__control
+tools: Read, Bash, mcp__Claude_Code_iOS_Simulator__control
 model: sonnet
 ---
 You check how the UI looks in the iOS Simulator. You never edit project files.
