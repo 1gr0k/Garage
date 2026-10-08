@@ -89,29 +89,11 @@ private struct VehicleDetailContent: View {
         let mileage = vehicle.currentMileageKm(records: records)
         @Bindable var viewModel = viewModel
         return List {
-            Section {
-                LabeledContent("Mileage", value: mileage.kilometers)
-                LabeledContent("Total spent", value: records.totalCost.formatted)
-            }
-            Section("Service History") {
-                ForEach(records) { record in
-                    Button {
-                        recordEdit = recordEditRequest(for: record.id, vehicle: vehicle, records: records)
-                    } label: {
-                        ServiceRecordRow(record: record, hasReceipt: receiptIDs.contains(record.id))
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier(AccessibilityID.VehicleDetail.record(record.id))
-                    // Без `role: .destructive`: иначе List уберёт строку ещё до подтверждения.
-                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button("Delete") { viewModel.pendingDeletion = record.id }
-                            .tint(.red)
-                            .disabled(viewModel.isDeleting)
-                            .accessibilityIdentifier(AccessibilityID.VehicleDetail.swipeDeleteRecord)
-                    }
-                }
-            }
+            VehicleSummarySection(mileage: mileage, totalCost: records.totalCost)
+            ServiceHistorySection(
+                records: records, receiptIDs: receiptIDs, isDeleting: viewModel.isDeleting,
+                onOpen: { id in recordEdit = recordEditRequest(for: id, vehicle: vehicle, records: records) },
+                onDelete: { viewModel.pendingDeletion = $0 })
         }
         .overlay {
             if records.isEmpty {
@@ -123,26 +105,16 @@ private struct VehicleDetailContent: View {
         .navigationTitle(vehicle.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            Button("Add Record", systemImage: "plus") {
-                newRecord = NewRecordRequest(vehicleID: vehicle.id, currentMileageKm: mileage)
-            }
-            .disabled(viewModel.isDeleting)
-            .accessibilityIdentifier(AccessibilityID.VehicleDetail.addRecord)
-            Menu("More", systemImage: "ellipsis.circle") {
-                Button("Edit", systemImage: "pencil") {
+            VehicleDetailToolbar(
+                isDeleting: viewModel.isDeleting,
+                onAddRecord: { newRecord = NewRecordRequest(vehicleID: vehicle.id, currentMileageKm: mileage) },
+                onEdit: {
                     vehicleEdit = VehicleEditRequest(
                         vehicle: vehicle, unrecognizedKind: rawKind, recordsMileageKm: records.map(\.mileageKm).max())
-                }
-                .disabled(viewModel.isDeleting)
-                .accessibilityIdentifier(AccessibilityID.VehicleDetail.edit)
-                Button("Delete Vehicle", systemImage: "trash", role: .destructive) {
-                    viewModel.isConfirmingVehicleDeletion = true
-                }
-                .disabled(viewModel.isDeleting)
-                .accessibilityIdentifier(AccessibilityID.VehicleDetail.deleteVehicle)
-            }
-            .accessibilityIdentifier(AccessibilityID.VehicleDetail.more)
+                },
+                onDeleteVehicle: { viewModel.isConfirmingVehicleDeletion = true })
         }
+        // Диалоги и алерты остаются здесь: они привязаны к ViewModel, а шиты — к `body` (комментарий выше).
         .confirmationDialog(
             "Delete this vehicle?", isPresented: $viewModel.isConfirmingVehicleDeletion, titleVisibility: .visible
         ) {
@@ -184,39 +156,5 @@ private struct VehicleDetailContent: View {
         else { return nil }
         let others = records.filter { $0.id != id }
         return RecordEditRequest(snapshot: snapshot, currentMileageKm: vehicle.currentMileageKm(records: others))
-    }
-}
-
-private struct ServiceRecordRow: View {
-    let record: ServiceRecord
-    let hasReceipt: Bool
-
-    var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(record.serviceType.title)
-                    .font(.headline)
-                Text(
-                    verbatim:
-                        "\(record.date.formatted(date: .abbreviated, time: .omitted)) · \(record.mileageKm.kilometers)"
-                )
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                if !record.parts.isEmpty {
-                    Text("\(record.parts.count) parts")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            Spacer()
-            if hasReceipt {
-                Image(systemName: "paperclip")
-                    .foregroundStyle(.secondary)
-                    .accessibilityLabel("Has receipt")
-                    .accessibilityIdentifier(AccessibilityID.VehicleDetail.receiptClip(record.id))
-            }
-            Text(record.totalCost.formatted)
-                .monospacedDigit()
-        }
     }
 }
