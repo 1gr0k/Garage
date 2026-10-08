@@ -16,7 +16,10 @@ struct SyncSettingsView: View {
         .navigationTitle("Synchronization")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            Button("Done") { dismiss() }
+            ToolbarItem(placement: .cancellationAction) {
+                Button(role: .close) { dismiss() }
+                    .accessibilityIdentifier(AccessibilityID.SyncSettings.close)
+            }
         }
         .task {
             if serverText.isEmpty { serverText = sync.serverURL?.absoluteString ?? "" }

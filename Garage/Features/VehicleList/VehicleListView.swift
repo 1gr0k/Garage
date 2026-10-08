@@ -76,12 +76,7 @@ private struct VehicleListContent: View {
                 VehicleFormView(viewModel: dependencies.makeVehicleFormViewModel())
             }
             .confirmationDialog(
-                "Delete this vehicle?",
-                isPresented: Binding(
-                    get: { viewModel.pendingDeletion != nil },
-                    set: { if !$0 { viewModel.pendingDeletion = nil } }),
-                titleVisibility: .visible,
-                presenting: viewModel.pendingDeletion
+                "Delete this vehicle?", item: $viewModel.pendingDeletion, titleVisibility: .visible
             ) { id in
                 Button("Delete Vehicle", role: .destructive) {
                     Task { await viewModel.delete(id: id) }

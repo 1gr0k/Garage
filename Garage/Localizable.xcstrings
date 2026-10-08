@@ -195,6 +195,16 @@
         }
       }
     },
+    "The receipt photo can't be displayed." : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Фото чека не удаётся показать."
+          }
+        }
+      }
+    },
     "Couldn't Save" : {
       "localizations" : {
         "ru" : {
@@ -761,16 +771,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ещё не синхронизировалось"
-          }
-        }
-      }
-    },
-    "Done" : {
-      "localizations" : {
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Готово"
           }
         }
       }

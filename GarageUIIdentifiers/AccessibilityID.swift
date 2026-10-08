@@ -16,6 +16,10 @@ nonisolated enum AccessibilityID {
         static let confirmDelete = "vehicleList.confirmDelete"
     }
 
+    enum SyncSettings {
+        static let close = "syncSettings.close"
+    }
+
     enum VehicleDetail {
         static let addRecord = "vehicleDetail.addRecord"
         static let more = "vehicleDetail.more"
