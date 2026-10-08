@@ -141,7 +141,7 @@ public enum MaintenanceSchedule {
     /// Расчёт всегда идёт в григорианском календаре с поясом переданного: в календаре с эпохами (японский)
     /// год `CalendarDay` без эпохи был бы неоднозначным, а `fireAt` для уведомления — в григорианских
     /// компонентах (адаптер задаёт им `calendar: .gregorian`).
-    static func gregorian(matching calendar: Calendar) -> Calendar {
+    public static func gregorian(matching calendar: Calendar) -> Calendar {
         var gregorian = Calendar(identifier: .gregorian)
         gregorian.timeZone = calendar.timeZone
         return gregorian

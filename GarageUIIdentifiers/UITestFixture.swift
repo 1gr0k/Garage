@@ -22,6 +22,16 @@
         /// Часовой пояс календаря тестового режима.
         static let timeZoneIdentifier = "UTC"
 
+        // Правила фикстуры (при `today` выше). Статусы — в `MaintenanceTests`.
+        /// Land Cruiser: масло каждые 12 месяцев или 10 000 км; последняя запись — ноябрь 2023 → просрочено по дате.
+        static let ruleOverdue = UUID(uuidString: "5A3F2000-6C0D-4B7E-9A10-000000000001")!
+        /// Land Cruiser: тормоза каждые 50 000 км, записей нет, старт — сегодня и 87 400 км → в норме.
+        static let ruleOK = UUID(uuidString: "5A3F2000-6C0D-4B7E-9A10-000000000002")!
+        /// CB500X: осмотр каждые 12 месяцев, старт 20.06.2024 → срок 20.06.2025, через 19 дней → скоро.
+        static let ruleSoon = UUID(uuidString: "5A3F2000-6C0D-4B7E-9A10-000000000003")!
+        /// Старт правила `ruleSoon`: за 346 дней до `today`.
+        static let ruleSoonStart = today.addingTimeInterval(-346 * 86_400)
+
         /// Запись Land Cruiser для правки пробега.
         static let recordToEdit = UUID(uuidString: "5A3F1000-6C0D-4B7E-9A10-000000000001")!
         /// Запись Transporter с фото чека.

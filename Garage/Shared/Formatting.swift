@@ -92,7 +92,9 @@ extension ValidationError {
         case .emptyServiceTypeDescription: "Required"
         case .invalidAmount: "Enter a valid amount"
         case .noInterval: "Choose a time or mileage interval"
-        case .periodOutOfRange: "Interval is out of range"
+        // Границы строками: числовая интерполяция добавила бы разделители тысяч («3,650»).
+        case .periodOutOfRange:
+            "Interval must be from 1 to \(String(ServicePeriod.daysRange.upperBound)) days or from 1 to \(String(ServicePeriod.monthsRange.upperBound)) months"
         case .distanceOutOfRange: "Distance must be from 1 to \(ServiceRecord.maxMileageKm.kilometers)"
         case .unknownPeriod: "Unknown interval"
         }

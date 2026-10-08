@@ -34,6 +34,44 @@ nonisolated enum AccessibilityID {
         static func receiptClip(_ id: UUID) -> String { "vehicleDetail.receiptClip." + id.uuidString }
         static let swipeDeleteRecord = "vehicleDetail.swipeDeleteRecord"
         static let confirmDeleteRecord = "vehicleDetail.confirmDeleteRecord"
+        /// Ближайшее по статусу правило в секции «Обслуживание»; `accessibilityValue` — `ok|dueSoon|overdue`.
+        static let maintenanceSummary = "vehicleDetail.maintenanceSummary"
+        /// Переход к экрану правил машины.
+        static let maintenanceAll = "vehicleDetail.maintenanceAll"
+    }
+
+    enum MaintenanceRules {
+        static let add = "maintenanceRules.add"
+        static let empty = "maintenanceRules.empty"
+        /// Префикс идентификаторов строк правил: для предиката `BEGINSWITH`.
+        static let rowPrefix = "maintenanceRules.row."
+        static func row(_ id: UUID) -> String { rowPrefix + id.uuidString }
+        /// Статус строки; `accessibilityValue` — `ok|dueSoon|overdue`, а не текст каталога.
+        static func status(_ id: UUID) -> String { "maintenanceRules.status." + id.uuidString }
+        static let swipeDelete = "maintenanceRules.swipeDelete"
+        static let confirmDelete = "maintenanceRules.confirmDelete"
+        /// Баннер «Уведомления выключены» и его кнопка.
+        static let notificationsOff = "maintenanceRules.notificationsOff"
+        static let openSettings = "maintenanceRules.openSettings"
+        /// Строка «Включить уведомления» (разрешение ещё не спрашивали, правила с интервалом по времени есть).
+        static let enableNotifications = "maintenanceRules.enableNotifications"
+    }
+
+    enum MaintenanceRuleForm {
+        static let close = "maintenanceRuleForm.close"
+        static let confirm = "maintenanceRuleForm.confirm"
+        static let serviceType = "maintenanceRuleForm.serviceType"
+        static let usesPeriod = "maintenanceRuleForm.usesPeriod"
+        static let periodValue = "maintenanceRuleForm.periodValue"
+        static let periodUnit = "maintenanceRuleForm.periodUnit"
+        static let periodError = "maintenanceRuleForm.periodError"
+        static let usesDistance = "maintenanceRuleForm.usesDistance"
+        static let distance = "maintenanceRuleForm.distance"
+        static let distanceError = "maintenanceRuleForm.distanceError"
+        static let intervalError = "maintenanceRuleForm.intervalError"
+        static let startMileage = "maintenanceRuleForm.startMileage"
+        static let deleteRule = "maintenanceRuleForm.deleteRule"
+        static let confirmDelete = "maintenanceRuleForm.confirmDelete"
     }
 
     enum VehicleForm {

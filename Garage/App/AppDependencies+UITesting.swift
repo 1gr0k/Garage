@@ -34,6 +34,10 @@ import Foundation
             for (record, receipt) in records {
                 try await repository.add(record, receiptImage: receipt)
             }
+            let ruleRepository = SwiftDataMaintenanceRuleRepository(container: container)
+            for rule in try fixtureRules() {
+                try await ruleRepository.add(rule)
+            }
             return AppDependencies(
                 container: container, credentials: InMemoryCredentialsStore(),
                 registrar: DisabledDeviceRegistrar(), reminderScheduler: RecordingReminderScheduler(),
@@ -94,6 +98,23 @@ import Foundation
                     ))
             }
             return result
+        }
+
+        /// Правила фикстуры: статусы при `UITestFixture.today` — просрочено, в норме, скоро (`UITestFixture.rule*`).
+        private static func fixtureRules() throws -> [MaintenanceRule] {
+            let today = UITestFixture.today
+            return [
+                try MaintenanceRule(
+                    id: UITestFixture.ruleOverdue, vehicleID: Vehicle.SampleID.landCruiser, serviceType: .oilChange,
+                    period: .months(12), distanceKm: 10_000, start: MaintenanceStart(date: today, mileageKm: 87_400)),
+                try MaintenanceRule(
+                    id: UITestFixture.ruleOK, vehicleID: Vehicle.SampleID.landCruiser, serviceType: .brakes,
+                    period: nil, distanceKm: 50_000, start: MaintenanceStart(date: today, mileageKm: 87_400)),
+                try MaintenanceRule(
+                    id: UITestFixture.ruleSoon, vehicleID: Vehicle.SampleID.cb500x, serviceType: .inspection,
+                    period: .months(12), distanceKm: nil,
+                    start: MaintenanceStart(date: UITestFixture.ruleSoonStart, mileageKm: 18_250)),
+            ]
         }
 
         /// PNG 1×1: достаточно, чтобы у записи был чек (скрепка и кнопка «Удалить фото»).

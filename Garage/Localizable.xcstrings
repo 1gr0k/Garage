@@ -255,12 +255,12 @@
         }
       }
     },
-    "Interval is out of range" : {
+    "Interval must be from 1 to %@ days or from 1 to %@ months" : {
       "localizations" : {
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Интервал вне допустимых пределов"
+            "value" : "Интервал: от 1 до %1$@ дней или от 1 до %2$@ месяцев"
           }
         }
       }
@@ -1392,7 +1392,98 @@
           }
         }
       }
-    }
+    },
+    "%lld days" : {
+      "comment" : "Интервал напоминания в днях.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : { "stringUnit" : { "state" : "translated", "value" : "%lld day" } },
+              "other" : { "stringUnit" : { "state" : "translated", "value" : "%lld days" } }
+            }
+          }
+        },
+        "ru" : {
+          "variations" : {
+            "plural" : {
+              "one" : { "stringUnit" : { "state" : "translated", "value" : "%lld день" } },
+              "few" : { "stringUnit" : { "state" : "translated", "value" : "%lld дня" } },
+              "many" : { "stringUnit" : { "state" : "translated", "value" : "%lld дней" } },
+              "other" : { "stringUnit" : { "state" : "translated", "value" : "%lld дня" } }
+            }
+          }
+        }
+      }
+    },
+    "%lld months" : {
+      "comment" : "Интервал напоминания в месяцах.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : { "stringUnit" : { "state" : "translated", "value" : "%lld month" } },
+              "other" : { "stringUnit" : { "state" : "translated", "value" : "%lld months" } }
+            }
+          }
+        },
+        "ru" : {
+          "variations" : {
+            "plural" : {
+              "one" : { "stringUnit" : { "state" : "translated", "value" : "%lld месяц" } },
+              "few" : { "stringUnit" : { "state" : "translated", "value" : "%lld месяца" } },
+              "many" : { "stringUnit" : { "state" : "translated", "value" : "%lld месяцев" } },
+              "other" : { "stringUnit" : { "state" : "translated", "value" : "%lld месяца" } }
+            }
+          }
+        }
+      }
+    },
+    "Maintenance" : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Обслуживание" } } } },
+    "Tap + to add a service reminder." : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Нажмите +, чтобы добавить напоминание о ТО." } } } },
+    "Reminders" : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Напоминания" } } } },
+    "No Reminders" : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Нет напоминаний" } } } },
+    "Add Reminder" : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Добавить напоминание" } } } },
+    "New Reminder" : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Новое напоминание" } } } },
+    "Edit Reminder" : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Правка напоминания" } } } },
+    "Delete Reminder" : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Удалить напоминание" } } } },
+    "Delete this reminder?" : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Удалить напоминание?" } } } },
+    "The reminder could not be deleted. Please try again." : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Не удалось удалить напоминание. Попробуйте ещё раз." } } } },
+    "The reminder could not be stored. Please try again." : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Не удалось сохранить напоминание. Попробуйте ещё раз." } } } },
+    "Reminder Deleted" : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Напоминание удалено" } } } },
+    "This reminder was deleted on another device." : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Это напоминание удалено на другом устройстве." } } } },
+    "Notifications are off" : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Уведомления выключены" } } } },
+    "Open Settings" : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Открыть настройки" } } } },
+    "Mileage reminders appear only in the app." : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Напоминания по пробегу видны только в приложении." } } } },
+    "By time" : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "По времени" } } } },
+    "By mileage" : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "По пробегу" } } } },
+    "Repeat by time" : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Повторять по времени" } } } },
+    "Repeat by mileage" : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Повторять по пробегу" } } } },
+    "Every" : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Каждые" } } } },
+    "Every, km" : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Каждые, км" } } } },
+    "Unit" : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Единица" } } } },
+    "Months" : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "месяцев" } } } },
+    "Days" : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "дней" } } } },
+    "Turn On Notifications" : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Включить уведомления" } } } },
+    "Last service" : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Последнее ТО" } } } },
+    "Used until there is a service record of this type." : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Используется, пока нет записи об обслуживании этого типа." } } } },
+    "Unknown time interval (%@)" : {
+      "comment" : "Интервал по времени, который прислал сервер, а это приложение не знает; %@ — исходная строка.",
+      "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Неизвестный интервал по времени (%@)" } } }
+    },
+    "Enter from 1 to %@ days" : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Введите от 1 до %@ дней" } } } },
+    "Enter from 1 to %@ months" : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Введите от 1 до %@ месяцев" } } } },
+    "Due today" : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Сегодня" } } } },
+    "On track" : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "В норме" } } } },
+    "Due soon" : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Скоро" } } } },
+    "Overdue" : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Просрочено" } } } },
+    "Interval: %@" : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Интервал: %@" } } } },
+    "Interval: %@ or %@" : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Интервал: %@ или %@" } } } },
+    "Due by %@" : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Срок: %@" } } } },
+    "Due at %@" : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Срок: %@" } } } },
+    "Due by %@ or at %@" : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Срок: %@ или %@" } } } },
+    "Last record: %@, %@" : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Последняя запись: %@, %@" } } } },
+    "Counting from %@" : { "localizations" : { "ru" : { "stringUnit" : { "state" : "translated", "value" : "Отсчёт от %@" } } } }
   },
   "version" : "1.0"
 }
