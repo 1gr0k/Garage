@@ -29,12 +29,15 @@
   "files": [
     { "kind": "folder", "path": "Garage", "target-membership": [ "Garage" ] },
     { "kind": "folder", "path": "GarageTests", "target-membership": [ "GarageTests" ] },
+    { "kind": "folder", "path": "GarageUITests", "target-membership": [ "GarageUITests" ] },
+    { "kind": "folder", "path": "GarageUIIdentifiers", "target-membership": [ "Garage", "GarageUITests" ] },
     {
       "kind": "group",
       "name": "Products",
       "children": [
         { "path": "<PRODUCTS>/Garage.app", "id": "000000000000000000000120", "type": "wrapper.application", "index": false },
         { "path": "<PRODUCTS>/GarageTests.xctest", "id": "000000000000000000000121", "type": "wrapper.cfbundle", "index": false },
+        { "path": "<PRODUCTS>/GarageUITests.xctest", "id": "000000000000000000000122", "type": "wrapper.cfbundle", "index": false },
       ],
     },
   ],
@@ -123,6 +126,35 @@
         "SWIFT_VERSION": "6.0",
         "TARGETED_DEVICE_FAMILY": "1,2",
         "TEST_HOST": "$(BUILT_PRODUCTS_DIR)/Garage.app/Garage",
+      },
+    }, {
+      "name": "GarageUITests",
+      "id": "000000000000000300000000",
+      "product": "Products/GarageUITests.xctest",
+      "product-type": "bundle.ui-testing",
+      "dependencies": [
+        "Garage",
+      ],
+      "build-phases": [
+        "compile-sources",
+        "frameworks",
+      ],
+      "package-product-members": [
+        {
+          "package": "GarageCore",
+          "product-name": "GarageCore",
+          "build-phase": { "build-phase": "frameworks" },
+        },
+      ],
+      "build-settings": {
+        "GENERATE_INFOPLIST_FILE": "YES",
+        "PRODUCT_BUNDLE_IDENTIFIER": "devplaceholder.GarageUITests",
+        "PRODUCT_NAME": "$(TARGET_NAME)",
+        "SDKROOT": "iphoneos",
+        "SUPPORTED_PLATFORMS": "iphoneos iphonesimulator",
+        "SWIFT_VERSION": "6.0",
+        "TARGETED_DEVICE_FAMILY": "1,2",
+        "TEST_TARGET_NAME": "Garage",
       },
     },
   ],

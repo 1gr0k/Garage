@@ -1,9 +1,12 @@
 #!/bin/bash
 # Definition of done in one command (see CLAUDE.md).
-#   scripts/check.sh                       all sections
-#   scripts/check.sh --only architecture|linux|ios|strings
+#   scripts/check.sh                       default sections (architecture linux ios strings)
+#   scripts/check.sh --only architecture|linux|ios|strings|ui
 # CI (GitHub Actions, Linux) runs only `architecture`, `linux` and `strings`;
 # `ios` needs Xcode and a simulator and runs locally only.
+# `ui` (XCUITest on en and ru, two simulators) is slow and local only: it is not part of the default run,
+# only `--only ui`. Env: UI_EXPECTED_LANGUAGE_EN / UI_EXPECTED_LANGUAGE_RU override the expected language
+# passed to `testRunsInExpectedLanguage` (to check that the test fails when the language is wrong).
 # Stops at the first failure and reports which section failed.
 # New local package: add it to `linux` (swift test) or `ios` (xcodebuild test).
 set -euo pipefail
@@ -12,13 +15,15 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
 
 sections="architecture linux ios strings"
-usage="usage: $0 [--only ${sections// /|}]"
+# Секции, которые идут только по `--only`, но не в общем прогоне.
+optional_sections="ui"
+usage="usage: $0 [--only ${sections// /|}|ui]  (ui is not part of the default run)"
 only=""
 case "${1:-}" in
     "") ;;
     --only)
         only="${2:-}"
-        [[ " $sections " == *" $only "* && -n "$only" ]] || { echo "$usage" >&2; exit 64; }
+        [[ " $sections $optional_sections " == *" $only "* && -n "$only" ]] || { echo "$usage" >&2; exit 64; }
         ;;
     *) echo "$usage" >&2; exit 64 ;;
 esac
@@ -103,6 +108,13 @@ section_architecture() {
             "${import}GarageSync${module_end}" "${files[@]}"
     fi
 
+    # Общая папка приложения и UI-тестов: только Foundation и GarageCore, без UI и хранилища.
+    read_files < <(find GarageUIIdentifiers -name '*.swift')
+    if [[ ${#files[@]} -gt 0 ]]; then
+        forbid "GarageUIIdentifiers imports only Foundation and GarageCore" \
+            "${import}(SwiftUI|UIKit|XCTest|SwiftData|GarageStorage|GarageSync|GarageAPI)${module_end}" "${files[@]}"
+    fi
+
     local location
     while IFS= read -r location; do
         echo "$location: GarageCore imports only Foundation" >&2
@@ -112,7 +124,7 @@ section_architecture() {
         | cut -d: -f1,2)
 
     echo "==> swift format lint --strict"
-    if ! swift format lint --strict -r Garage GarageTests Packages/*/Sources Packages/*/Tests \
+    if ! swift format lint --strict -r Garage GarageTests GarageUITests GarageUIIdentifiers Packages/*/Sources Packages/*/Tests \
         Server/Sources Server/Tests Packages/*/Package.swift Server/Package.swift; then
         architecture_violations=$((architecture_violations + 1))
     fi
@@ -158,6 +170,106 @@ section_ios() {
     xcodebuild test -project Garage.xcodeproj -scheme GarageTests -destination "$dest"
 }
 
+# UDID исходного симулятора для `ui_simulator`: $SIM_UDID или первый UUID из CLAUDE.local.md.
+sim_source_udid() {
+    if [[ -n "${SIM_UDID:-}" ]]; then
+        printf '%s\n' "$SIM_UDID"
+        return
+    fi
+    local udid=""
+    [[ -f CLAUDE.local.md ]] && udid=$(grep -oEm1 '[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}' CLAUDE.local.md || true)
+    [[ -n "$udid" ]] || { echo "SIM_UDID is not set and CLAUDE.local.md has no simulator UDID" >&2; return 1; }
+    printf '%s\n' "$udid"
+}
+
+# ui_simulator <lang>: UDID устройства `Garage UI <lang>`. Нет такого — создаём с типом и рантаймом
+# исходного симулятора (`simctl clone` не работает с запущенным источником и переносит приложения
+# и Keychain). Устройство запускается и ждёт готовности.
+ui_simulator() {
+    local name="Garage UI $1" devices udid source runtime device_type
+    devices=$(xcrun simctl list -j devices)
+    udid=$(jq -r --arg name "$name" '[.devices[][] | select(.name == $name and .isAvailable)][0].udid // empty' <<<"$devices")
+    if [[ -z "$udid" ]]; then
+        source=$(sim_source_udid) || return 1
+        runtime=$(jq -r --arg udid "$source" '.devices | to_entries[] | select(.value[] | .udid == $udid) | .key' <<<"$devices")
+        device_type=$(jq -r --arg udid "$source" '[.devices[][] | select(.udid == $udid)][0].deviceTypeIdentifier // empty' <<<"$devices")
+        [[ -n "$runtime" && -n "$device_type" ]] || { echo "Simulator $source not found" >&2; return 1; }
+        # В bash 3.2 `set -e` не действует внутри `$(…)`: каждый шаг проверяется явно.
+        udid=$(xcrun simctl create "$name" "$device_type" "$runtime") || return 1
+    fi
+    [[ -n "$udid" ]] || { echo "Simulator \"$name\" was not created" >&2; return 1; }
+    xcrun simctl bootstatus "$udid" -b >/dev/null || return 1
+    printf '%s\n' "$udid"
+}
+
+# Регрессия вью: XCUITest на en и ru параллельно на двух симуляторах одной сборкой.
+# Не входит в общий прогон (медленно, нужны симуляторы): только `--only ui`.
+section_ui() {
+    require xcodebuild ui
+    require xcrun ui
+    require jq ui
+    local build=.build/ui langs="en ru" lang udid status=0
+    local -a pids=() udids=() codes=()
+    # Прерывание скрипта не должно оставлять фоновые xcodebuild.
+    trap 'kill ${pids[@]+"${pids[@]}"} 2>/dev/null || true' INT TERM
+    echo "==> build-for-testing GarageUITests"
+    xcodebuild build-for-testing -project Garage.xcodeproj -scheme GarageUITests \
+        -destination 'generic/platform=iOS Simulator' -derivedDataPath "$build"
+    for lang in $langs; do
+        udid=$(ui_simulator "$lang") && [[ -n "$udid" ]] || return 1
+        udids+=("$udid")
+        echo "==> Garage UI $lang: $udid"
+    done
+    local index=0 region expected skip
+    for lang in $langs; do
+        case $lang in
+            en) region=US expected=${UI_EXPECTED_LANGUAGE_EN:-en} skip=(-skip-testing:GarageUITests/LocalizedTextTests) ;;
+            ru) region=RU expected=${UI_EXPECTED_LANGUAGE_RU:-ru} skip=() ;;
+        esac
+        rm -rf "$build/$lang.xcresult"
+        echo "==> test $lang (log: $build/$lang.log)"
+        TEST_RUNNER_GARAGE_EXPECTED_LANGUAGE=$expected xcodebuild test-without-building \
+            -project Garage.xcodeproj -scheme GarageUITests -derivedDataPath "$build" \
+            -destination "id=${udids[index]}" -testLanguage "$lang" -testRegion "$region" \
+            ${skip[@]+"${skip[@]}"} -resultBundlePath "$build/$lang.xcresult" >"$build/$lang.log" 2>&1 &
+        pids+=($!)
+        index=$((index + 1))
+        # UI_SERIAL=1: языки по очереди (на слабой или занятой машине два симулятора подвисают).
+        if [[ -n "${UI_SERIAL:-}" ]]; then
+            if wait "${pids[index - 1]}"; then codes+=(0); else codes+=(1); fi
+        fi
+    done
+    index=0
+    for lang in $langs; do
+        if [[ -z "${UI_SERIAL:-}" ]]; then
+            if wait "${pids[index]}"; then codes+=(0); else codes+=(1); fi
+        fi
+        if [[ "${codes[index]}" == 0 ]]; then
+            echo "ui: $lang passed"
+        else
+            status=1
+            echo "ui: $lang FAILED, result: $build/$lang.xcresult" >&2
+            grep -E "error:|failed" "$build/$lang.log" | head -20 >&2 || true
+            tail -n 15 "$build/$lang.log" >&2
+        fi
+        index=$((index + 1))
+    done
+    ((status == 0)) || return 1
+
+    # Тестовый режим не должен протечь в Release.
+    echo "==> Release build (test mode must not leak)"
+    xcodebuild build -project Garage.xcodeproj -scheme Garage -configuration Release \
+        -destination 'generic/platform=iOS Simulator' -derivedDataPath "$build"
+    # `grep -c` читает весь вывод: `grep -q` закрыл бы канал раньше, и `strings` под pipefail дал бы 141.
+    # Короткая строка может лежать в коде инлайном, поэтому ищем ещё и символ тестового режима.
+    local release_binary=$build/Build/Products/Release-iphonesimulator/Garage.app/Garage leaks
+    leaks=$(strings -a "$release_binary" | grep -cE 'GarageUITesting|bootstrapForUITesting|InMemoryCredentialsStore' || true)
+    if [[ "$leaks" != 0 ]]; then
+        echo "ui: the Release build contains the UI-testing mode ($leaks matches)" >&2
+        return 1
+    fi
+}
+
 # Lists catalog keys that are stale, lack `ru`, have a `ru` state other than
 # `translated`, or have a `ru` plural missing one/few/many/other.
 section_strings() {
@@ -179,8 +291,12 @@ section_strings() {
     fi
 }
 
-for name in $sections; do
-    [[ -z "$only" || "$only" == "$name" ]] || continue
+for name in $sections $optional_sections; do
+    if [[ -z "$only" ]]; then
+        [[ " $sections " == *" $name "* ]] || continue
+    else
+        [[ "$only" == "$name" ]] || continue
+    fi
     current=$name
     echo "### $name"
     "section_$name"

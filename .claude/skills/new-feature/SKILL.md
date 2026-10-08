@@ -50,6 +50,7 @@ description: Чек-лист новой фичи приложения по сл�
 
 - [ ] `Garage/Features/<Feature>/<Feature>View.swift` — тонкая: биндинги к VM, вызовы методов VM. Чтение для показа — `@Query` + `validVehicles()` / `validRecords()` (новый маппинг — в `DisplayMapping.swift`).
 - [ ] Во вью нет `modelContext`, `.insert(`, `context.save()`, `ServiceLog`/`SyncQueue`/…, `import GarageSync`/`GarageAPI`.
+- [ ] Интерактивные элементы и значимые тексты получают `.accessibilityIdentifier(AccessibilityID.<Экран>.<элемент>)`; строки идентификаторов — в `GarageUIIdentifiers/AccessibilityID.swift`, вёрстка не меняется.
 - [ ] Новая папка в `Garage/` подхватывается сама (синхронизируемая папка) — `project.xcproj` не трогать.
 
 ## 7. Composition root
@@ -63,6 +64,7 @@ description: Чек-лист новой фичи приложения по сл�
 ## 9. Проверка
 
 - [ ] `scripts/check.sh` целиком (architecture, linux, ios, strings).
-- [ ] ui-checker: сценарий фичи в симуляторе, на русском и английском.
+- [ ] Сценарий фичи в `GarageUITests/` (по идентификаторам, без текстов из каталога) и `scripts/check.sh --only ui` проходит на en и ru; нужны данные — расширь фикстуру в `GarageUIIdentifiers/UITestFixture.swift` и `Garage/App/AppDependencies+UITesting.swift`.
+- [ ] ui-checker — только визуальная проверка нового UI (обрезка ru-строк, вёрстка, пустые состояния), не регрессия сценариев.
 - [ ] swift-reviewer на diff.
 - [ ] Появился новый тип правил/слой — обнови `docs/architecture.md`.
