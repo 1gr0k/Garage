@@ -205,6 +205,45 @@ ViewModel (`makeServiceRecordFormViewModel(vehicleID:currentMileageKm:)`) и о�
 видит (логика во вью, use case без правила, сборка зависимостей вне composition root), проверяет
 `swift-reviewer` (пункт «Layer boundaries»).
 
+## Расхождения со скиллами Apple
+
+Скиллы `swiftui-whats-new-27` и `swiftui-specialist` (личные, `~/.claude/skills/`, экспорт из Xcode) —
+справочник по API. Их примеры не знают нашей архитектуры; при расхождении главнее этот документ. Решения
+по каждому расхождению:
+
+1. **Свайп удаления.** Скилл (`swiftui-whats-new-27/references/swipe-actions.md`): `Button(role: .destructive)`
+   с удалением прямо в действии. Мы: без `role: .destructive`, удаление через ViewModel. Причина:
+   `.destructive` в `List` убирает строку сразу, до подтверждения (этап 9); запись идёт View → ViewModel →
+   порт (раздел «Слои»). Из примера берём только API; `swipeActionsContainer()` нужен лишь вне `List`.
+2. **`confirmationDialog(item:)`** (`references/item-binding.md`): пример держит `@State` во вью. Мы
+   используем overload, но привязка — к `pendingDeletion` во ViewModel. Причина: состояние подтверждения —
+   часть сценария удаления, его проверяют тесты ViewModel. Deployment target 27.2, `#available` не нужен. На
+   iOS 27 диалог — popover без кнопки «Отмена» (этапы 9–11).
+3. **Локаль** (`swiftui-specialist/references/localization.md`: `@Environment(\.locale)` вместо
+   `Locale.current`). Во вью следуем совету. Во ViewModel оставляем `Locale.current`: разделитель денег —
+   параметр `init` `ServiceRecordFormViewModel` со значением по умолчанию из `Locale.current`, тесты
+   передают своё. Причина: у ViewModel нет окружения SwiftUI. Цена: `.environment(\.locale)` в превью на
+   разделитель не влияет — приемлемо.
+4. **`LocalizedStringResource` вместо `String`** (`localization.md`). В `GarageCore` не используем: в нём
+   нет пользовательских строк, пакет обязан собираться на Linux, доступность типа там не проверена. Во
+   ViewModel допустимо для новых сообщений, если понадобится; пользовательские данные по-прежнему через
+   `Text(verbatim:)` / `String`.
+5. **`comment:` и `bundle: #bundle`** (`localization.md`). `comment:` в коде не обязателен: строки живут в
+   `Localizable.xcstrings` с ru-переводом, комментарий при необходимости пишется в каталоге. `#bundle`
+   нужен только строкам внутри пакетов, UI-пакетов у нас нет; появится — вернуться к пункту.
+6. **Формы и `draft`** (`references/dataflow.md`, «Expose struct fields as individual properties»). Формы
+   биндятся к `draft` целиком. Причина: черновик — одно значение, которое проверяется и превращается в
+   доменный тип за раз (`makeRecord`, `makeVehicle`). Совет про лишние инвалидации важен на больших экранах;
+   для формы цена мала, а цельный черновик проще тестировать.
+7. **Кэш через `didSet`** (`dataflow.md`, «Cache derived @Observable values»). Производные значения
+   вычисляем, а не кэшируем. Причина: правило derived state (например, `currentMileageKm(records:)`) — один
+   источник истины, кэш расходится с источником при правке в обход сеттера. Кэш допустим только при
+   измеренной проблеме производительности и с тестом на согласованность.
+8. **Имена тестов** (`modernize-tests`, не подключён: raw-идентификаторы с пробелами). У нас camelCase:
+   на них опираются `--filter` в CLAUDE.md и скрипты. Если скилл подключим, его стиль имён не применять.
+
+Правило приоритета («скилл говорит, что заменяет прежние знания») — в CLAUDE.md, раздел Rules.
+
 ## Хук против записи через shell
 
 `.claude/hooks/deny-shell-writes.sh` (PreToolUse на Bash) отклоняет запись в файлы проекта через
