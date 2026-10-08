@@ -20,20 +20,25 @@ struct VehicleFormView: View {
                     Picker("Kind", selection: $viewModel.draft.kind) {
                         ForEach(VehicleKind.allCases, id: \.self) { Text($0.title).tag($0) }
                     }
+                    .accessibilityIdentifier(AccessibilityID.VehicleForm.kind)
                 }
                 Section {
                     TextField("Make", text: field(\.make, .make))
-                    errorText(.make)
+                        .accessibilityIdentifier(AccessibilityID.VehicleForm.make)
+                    errorText(.make, id: AccessibilityID.VehicleForm.makeError)
                     TextField("Model", text: field(\.model, .model))
-                    errorText(.model)
+                        .accessibilityIdentifier(AccessibilityID.VehicleForm.model)
+                    errorText(.model, id: AccessibilityID.VehicleForm.modelError)
                     TextField("Year", text: field(\.yearText, .year))
                         .keyboardType(.numberPad)
-                    errorText(.year)
+                        .accessibilityIdentifier(AccessibilityID.VehicleForm.year)
+                    errorText(.year, id: AccessibilityID.VehicleForm.yearError)
                 }
                 Section {
                     TextField("Mileage, km", text: field(\.mileageText, .mileage))
                         .keyboardType(.numberPad)
-                    errorText(.mileage)
+                        .accessibilityIdentifier(AccessibilityID.VehicleForm.mileage)
+                    errorText(.mileage, id: AccessibilityID.VehicleForm.mileageError)
                     if let value = viewModel.recordsMileageHintKm {
                         Text("By records: \(value.kilometers)")
                             .font(.footnote).foregroundStyle(.secondary)
@@ -46,12 +51,14 @@ struct VehicleFormView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(role: .close) { dismiss() }
+                        .accessibilityIdentifier(AccessibilityID.VehicleForm.close)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(role: .confirm) {
                         Task { if await viewModel.save() { dismiss() } }
                     }
                     .disabled(viewModel.isSaving)
+                    .accessibilityIdentifier(AccessibilityID.VehicleForm.confirm)
                 }
             }
             .alert("Couldn't Save", isPresented: $viewModel.saveFailed) {
@@ -68,9 +75,10 @@ struct VehicleFormView: View {
     }
 
     @ViewBuilder
-    private func errorText(_ field: Field) -> some View {
+    private func errorText(_ field: Field, id: String) -> some View {
         if let error = viewModel.errors[field] {
             Text(error.message).font(.footnote).foregroundStyle(.red)
+                .accessibilityIdentifier(id)
         }
     }
 

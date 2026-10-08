@@ -60,6 +60,7 @@ private struct VehicleDetailContent: View {
                 content(vehicle: vehicle)
             } else {
                 ContentUnavailableView("Vehicle Not Found", systemImage: "questionmark.circle")
+                    .accessibilityIdentifier(AccessibilityID.VehicleDetail.notFound)
             }
         }
         .sheet(item: $newRecord) { request in
@@ -99,11 +100,13 @@ private struct VehicleDetailContent: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier(AccessibilityID.VehicleDetail.record(record.id))
                     // Без `role: .destructive`: иначе List уберёт строку ещё до подтверждения.
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         Button("Delete") { viewModel.pendingDeletion = record.id }
                             .tint(.red)
                             .disabled(viewModel.isDeleting)
+                            .accessibilityIdentifier(AccessibilityID.VehicleDetail.swipeDeleteRecord)
                     }
                 }
             }
@@ -111,6 +114,7 @@ private struct VehicleDetailContent: View {
         .overlay {
             if records.isEmpty {
                 ContentUnavailableView("No Service Records", systemImage: "wrench.and.screwdriver")
+                    .accessibilityIdentifier(AccessibilityID.VehicleDetail.noRecords)
                     .padding(.top, 120)
             }
         }
@@ -121,17 +125,21 @@ private struct VehicleDetailContent: View {
                 newRecord = NewRecordRequest(vehicleID: vehicle.id, currentMileageKm: mileage)
             }
             .disabled(viewModel.isDeleting)
+            .accessibilityIdentifier(AccessibilityID.VehicleDetail.addRecord)
             Menu("More", systemImage: "ellipsis.circle") {
                 Button("Edit", systemImage: "pencil") {
                     vehicleEdit = VehicleEditRequest(
                         vehicle: vehicle, recordsMileageKm: records.map(\.mileageKm).max())
                 }
                 .disabled(viewModel.isDeleting)
+                .accessibilityIdentifier(AccessibilityID.VehicleDetail.edit)
                 Button("Delete Vehicle", systemImage: "trash", role: .destructive) {
                     viewModel.isConfirmingVehicleDeletion = true
                 }
                 .disabled(viewModel.isDeleting)
+                .accessibilityIdentifier(AccessibilityID.VehicleDetail.deleteVehicle)
             }
+            .accessibilityIdentifier(AccessibilityID.VehicleDetail.more)
         }
         .confirmationDialog(
             "Delete this vehicle?", isPresented: $viewModel.isConfirmingVehicleDeletion, titleVisibility: .visible
@@ -139,6 +147,7 @@ private struct VehicleDetailContent: View {
             Button("Delete Vehicle", role: .destructive) {
                 Task { if await viewModel.deleteVehicle(id: vehicle.id) { dismiss() } }
             }
+            .accessibilityIdentifier(AccessibilityID.VehicleDetail.confirmDeleteVehicle)
             Button("Cancel", role: .cancel) {}
         } message: {
             VehicleDeletionMessage(recordCount: recordEntities.count)
@@ -159,6 +168,7 @@ private struct VehicleDetailContent: View {
             Button("Delete Record", role: .destructive) {
                 Task { await viewModel.delete(id: id) }
             }
+            .accessibilityIdentifier(AccessibilityID.VehicleDetail.confirmDeleteRecord)
         } message: { _ in
             Text("This can't be undone.")
         }
@@ -206,6 +216,7 @@ private struct ServiceRecordRow: View {
                 Image(systemName: "paperclip")
                     .foregroundStyle(.secondary)
                     .accessibilityLabel("Has receipt")
+                    .accessibilityIdentifier(AccessibilityID.VehicleDetail.receiptClip(record.id))
             }
             Text(record.totalCost.formatted)
                 .monospacedDigit()

@@ -39,21 +39,25 @@ private struct VehicleListContent: View {
                             Text("\(item.recordCount) records")
                         }
                         .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier(AccessibilityID.VehicleList.rowSubtitle(item.id))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                     }
                 }
+                .accessibilityIdentifier(AccessibilityID.VehicleList.row(item.id))
                 // Без `role: .destructive`: иначе List уберёт строку ещё до подтверждения.
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     Button("Delete") { viewModel.pendingDeletion = item.id }
                         .tint(.red)
                         .disabled(viewModel.isDeleting)
+                        .accessibilityIdentifier(AccessibilityID.VehicleList.swipeDelete)
                 }
             }
             .navigationDestination(for: Vehicle.ID.self) { VehicleDetailView(vehicleID: $0) }
             .overlay {
                 if vehicles.isEmpty {
                     ContentUnavailableView("No Vehicles", systemImage: "car")
+                        .accessibilityIdentifier(AccessibilityID.VehicleList.empty)
                 }
             }
             .navigationTitle("Garage")
@@ -61,7 +65,9 @@ private struct VehicleListContent: View {
                 Button("Synchronization", systemImage: "arrow.triangle.2.circlepath") {
                     isShowingSyncSettings = true
                 }
+                .accessibilityIdentifier(AccessibilityID.VehicleList.sync)
                 Button("Add Vehicle", systemImage: "plus") { isAddingVehicle = true }
+                    .accessibilityIdentifier(AccessibilityID.VehicleList.add)
             }
             .sheet(isPresented: $isShowingSyncSettings) {
                 NavigationStack { SyncSettingsView() }
@@ -80,6 +86,7 @@ private struct VehicleListContent: View {
                 Button("Delete Vehicle", role: .destructive) {
                     Task { await viewModel.delete(id: id) }
                 }
+                .accessibilityIdentifier(AccessibilityID.VehicleList.confirmDelete)
                 Button("Cancel", role: .cancel) {}
             } message: { id in
                 VehicleDeletionMessage(recordCount: vehicles.first { $0.id == id }?.recordCount ?? 0)

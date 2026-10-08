@@ -23,7 +23,8 @@ struct ServiceRecordFormView: View {
                     DatePicker("Date", selection: $viewModel.draft.date, displayedComponents: .date)
                     TextField("Mileage, km", text: field(\.mileageText, .mileage))
                         .keyboardType(.numberPad)
-                    errorText(.mileage)
+                        .accessibilityIdentifier(AccessibilityID.ServiceRecordForm.mileage)
+                    errorText(.mileage, id: AccessibilityID.ServiceRecordForm.mileageError)
                     if let value = viewModel.newMileageKm {
                         Text("Vehicle mileage will be \(value.kilometers)")
                             .font(.footnote).foregroundStyle(.secondary)
@@ -50,6 +51,7 @@ struct ServiceRecordFormView: View {
                     Section {
                         Button("Delete Record", role: .destructive) { isConfirmingDelete = true }
                             .disabled(viewModel.isBusy)
+                            .accessibilityIdentifier(AccessibilityID.ServiceRecordForm.deleteRecord)
                     }
                 }
             }
@@ -59,12 +61,14 @@ struct ServiceRecordFormView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(role: .close) { dismiss() }
+                        .accessibilityIdentifier(AccessibilityID.ServiceRecordForm.close)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(role: .confirm) {
                         Task { if await viewModel.save() { dismiss() } }
                     }
                     .disabled(isPhotoPending || viewModel.isBusy)
+                    .accessibilityIdentifier(AccessibilityID.ServiceRecordForm.confirm)
                 }
             }
             .alert("Couldn't Save", isPresented: $viewModel.saveFailed) {
@@ -94,6 +98,7 @@ struct ServiceRecordFormView: View {
                 Button("Delete Record", role: .destructive) {
                     Task { if await viewModel.delete() { dismiss() } }
                 }
+                .accessibilityIdentifier(AccessibilityID.ServiceRecordForm.confirmDelete)
             } message: {
                 Text("This can't be undone.")
             }
@@ -142,6 +147,7 @@ struct ServiceRecordFormView: View {
                 receiptButtons
             } else {
                 PhotosPicker("Attach Receipt Photo", selection: $photoItem, matching: .images)
+                    .accessibilityIdentifier(AccessibilityID.ServiceRecordForm.attachPhoto)
             }
         }
         .task(id: photoItem) { await loadPhoto(photoItem) }
@@ -150,16 +156,23 @@ struct ServiceRecordFormView: View {
     @ViewBuilder
     private var receiptButtons: some View {
         PhotosPicker("Replace Photo", selection: $photoItem, matching: .images)
+            .accessibilityIdentifier(AccessibilityID.ServiceRecordForm.replacePhoto)
         Button("Remove Photo", role: .destructive) {
             viewModel.removeReceipt()
             photoItem = nil
         }
+        .accessibilityIdentifier(AccessibilityID.ServiceRecordForm.removePhoto)
     }
 
     @ViewBuilder
-    private func errorText(_ field: Field) -> some View {
+    private func errorText(_ field: Field, id: String? = nil) -> some View {
         if let error = viewModel.errors[field] {
-            Text(error.message).font(.footnote).foregroundStyle(.red)
+            let text = Text(error.message).font(.footnote).foregroundStyle(.red)
+            if let id {
+                text.accessibilityIdentifier(id)
+            } else {
+                text
+            }
         }
     }
 
