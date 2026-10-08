@@ -7,6 +7,11 @@
 # `ui` (XCUITest on en and ru, two simulators) is slow and local only: it is not part of the default run,
 # only `--only ui`. Env: UI_EXPECTED_LANGUAGE_EN / UI_EXPECTED_LANGUAGE_RU override the expected language
 # passed to `testRunsInExpectedLanguage` (to check that the test fails when the language is wrong).
+#   scripts/check.sh --test GarageCore|GarageSync|GarageAPI|Server <regex>   one `swift test --filter`
+#   scripts/check.sh --test GarageStorage|app|ui <Target/Suite/test>         one `xcodebuild -only-testing`
+#                                                                           (ui: language from $UI_LANG, default en)
+# The full output of every section (and of --test) also goes to .build/check-logs/<section>.log
+# (test-<target>.log for --test); the path is printed at the end. The exit code is that of the check.
 # Stops at the first failure and reports which section failed.
 # New local package: add it to `linux` (swift test) or `ios` (xcodebuild test).
 set -euo pipefail
@@ -17,13 +22,23 @@ cd "$root"
 sections="architecture linux ios strings"
 # Секции, которые идут только по `--only`, но не в общем прогоне.
 optional_sections="ui"
-usage="usage: $0 [--only ${sections// /|}|ui]  (ui is not part of the default run)"
+test_targets="GarageCore GarageSync GarageAPI Server GarageStorage app ui"
+usage="usage: $0 [--only ${sections// /|}|ui]  (ui is not part of the default run)
+       $0 --test ${test_targets// /|} <filter>"
 only=""
+test_target=""
+test_filter=""
 case "${1:-}" in
     "") ;;
     --only)
         only="${2:-}"
         [[ " $sections $optional_sections " == *" $only "* && -n "$only" ]] || { echo "$usage" >&2; exit 64; }
+        ;;
+    --test)
+        test_target="${2:-}"
+        test_filter="${3:-}"
+        [[ " $test_targets " == *" $test_target "* && -n "$test_target" && -n "$test_filter" && $# -eq 3 ]] \
+            || { echo "$usage" >&2; exit 64; }
         ;;
     *) echo "$usage" >&2; exit 64 ;;
 esac
@@ -291,15 +306,90 @@ section_strings() {
     fi
 }
 
-for name in $sections $optional_sections; do
-    if [[ -z "$only" ]]; then
-        [[ " $sections " == *" $name "* ]] || continue
-    else
-        [[ "$only" == "$name" ]] || continue
-    fi
-    current=$name
-    echo "### $name"
-    "section_$name"
-done
+# Одиночный тест: `--test <цель> <фильтр>`.
+#   GarageCore|GarageSync|GarageAPI|Server — `swift test --filter <фильтр>` (регулярное выражение);
+#   GarageStorage|app|ui — `xcodebuild -only-testing:<фильтр>`, фильтр — полный идентификатор вида
+#   `GarageTests/VehicleListViewModelTests/testX` (для GarageStorage — цель из его пакета).
+#   `ui` гоняет один язык: $UI_LANG (по умолчанию en).
+test_run() {
+    local target=$1 filter=$2 dest lang region expected udid build=.build/ui
+    case $target in
+        GarageCore | GarageSync | GarageAPI)
+            echo "==> swift test Packages/$target --filter $filter"
+            swift test --package-path "Packages/$target" --filter "$filter"
+            ;;
+        Server)
+            echo "==> swift test Server --filter $filter"
+            swift test --package-path Server --filter "$filter"
+            ;;
+        GarageStorage)
+            require xcodebuild "test $target"
+            dest=$(sim_destination)
+            echo "==> xcodebuild test GarageStorage -only-testing:$filter ($dest)"
+            (cd Packages/GarageStorage && xcodebuild test -scheme GarageStorage -destination "$dest" "-only-testing:$filter")
+            ;;
+        app)
+            require xcodebuild "test $target"
+            dest=$(sim_destination)
+            echo "==> xcodebuild test GarageTests -only-testing:$filter ($dest)"
+            xcodebuild test -project Garage.xcodeproj -scheme GarageTests -destination "$dest" "-only-testing:$filter"
+            ;;
+        ui)
+            require xcodebuild "test $target"
+            require xcrun "test $target"
+            require jq "test $target"
+            lang=${UI_LANG:-en}
+            case $lang in
+                en) region=US expected=${UI_EXPECTED_LANGUAGE_EN:-en} ;;
+                ru) region=RU expected=${UI_EXPECTED_LANGUAGE_RU:-ru} ;;
+                *) echo "check.sh: UI_LANG must be en or ru" >&2; return 1 ;;
+            esac
+            echo "==> build-for-testing GarageUITests"
+            xcodebuild build-for-testing -project Garage.xcodeproj -scheme GarageUITests \
+                -destination 'generic/platform=iOS Simulator' -derivedDataPath "$build"
+            udid=$(ui_simulator "$lang") && [[ -n "$udid" ]] || return 1
+            echo "==> test $lang -only-testing:$filter (Garage UI $lang: $udid)"
+            TEST_RUNNER_GARAGE_EXPECTED_LANGUAGE=$expected xcodebuild test-without-building \
+                -project Garage.xcodeproj -scheme GarageUITests -derivedDataPath "$build" \
+                -destination "id=$udid" -testLanguage "$lang" -testRegion "$region" "-only-testing:$filter"
+            ;;
+    esac
+}
+
+# run_logged <имя> <команда...>: полный вывод идёт в консоль и в .build/check-logs/<имя>.log
+# (каталог вне git); в конце печатается путь к логу. Код возврата — команды, а не tee.
+# `set -e` включён явно в подоболочке: внутри `||`/`if` он бы не действовал.
+run_logged() {
+    local name=$1 log code
+    shift
+    log=.build/check-logs/$name.log
+    mkdir -p .build/check-logs
+    set +e
+    (
+        set -e
+        "$@"
+    ) 2>&1 | tee "$log"
+    code=${PIPESTATUS[0]}
+    set -e
+    echo "check.sh: log: $log"
+    return "$code"
+}
+
+if [[ -n "$test_target" ]]; then
+    current="test-$test_target"
+    echo "### $current"
+    run_logged "$current" test_run "$test_target" "$test_filter"
+else
+    for name in $sections $optional_sections; do
+        if [[ -z "$only" ]]; then
+            [[ " $sections " == *" $name "* ]] || continue
+        else
+            [[ "$only" == "$name" ]] || continue
+        fi
+        current=$name
+        echo "### $name"
+        run_logged "$name" "section_$name"
+    done
+fi
 current=""
 echo "check.sh: all checks passed"
