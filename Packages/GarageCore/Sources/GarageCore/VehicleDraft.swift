@@ -2,20 +2,27 @@ import Foundation
 
 /// Состояние формы машины: сырой ввод, проверка — в `makeVehicle`.
 public struct VehicleDraft: Hashable, Sendable {
-    public var kind: VehicleKind
+    /// `nil` — вид не выбран. Допустимо только в правке машины с незнакомым серверным видом
+    /// (`unrecognizedKind != nil`): тогда сохранение не трогает сырое значение (решение 9e плана этапа 12).
+    public var kind: VehicleKind?
+    /// Исходная строка вида, который клиент не знает; форма показывает её в пикере вместо выбранного варианта.
+    /// Не редактируется: выбор вида в пикере только обнуляет намерение «оставить» (`kind != nil`).
+    public let unrecognizedKind: String?
     public var make: String
     public var model: String
     public var yearText: String
     public var mileageText: String
 
     public init(
-        kind: VehicleKind = .car,
+        kind: VehicleKind? = .car,
+        unrecognizedKind: String? = nil,
         make: String = "",
         model: String = "",
         yearText: String = "",
         mileageText: String = ""
     ) {
         self.kind = kind
+        self.unrecognizedKind = unrecognizedKind
         self.make = make
         self.model = model
         self.yearText = yearText
@@ -23,9 +30,11 @@ public struct VehicleDraft: Hashable, Sendable {
     }
 
     /// Обратное отображение для формы правки: год и пробег — цифры без разделителей.
-    public init(vehicle: Vehicle) {
+    /// - Parameter unrecognizedKind: сырой вид машины, если сервер прислал незнакомый; тогда `kind == nil`.
+    public init(vehicle: Vehicle, unrecognizedKind: String? = nil) {
         self.init(
-            kind: vehicle.kind,
+            kind: unrecognizedKind == nil ? vehicle.kind : nil,
+            unrecognizedKind: unrecognizedKind,
             make: vehicle.make,
             model: vehicle.model,
             yearText: String(vehicle.year),
@@ -35,6 +44,7 @@ public struct VehicleDraft: Hashable, Sendable {
 
     /// Поле формы, у которого может быть ошибка.
     public enum Field: Hashable, Sendable {
+        case kind
         case make
         case model
         case year
@@ -70,6 +80,18 @@ public struct VehicleDraft: Hashable, Sendable {
     public func makeVehicle(id: Vehicle.ID = UUID(), currentYear: Int) throws(Errors) -> Vehicle {
         var errors: [Field: FieldError] = [:]
 
+        // Вид не выбран: у машины с незнакомым видом в домене остаётся автомобиль (как в `Vehicle(dto:)`),
+        // иначе вид обязателен.
+        let resolvedKind: VehicleKind
+        if let kind {
+            resolvedKind = kind
+        } else if unrecognizedKind != nil {
+            resolvedKind = .car
+        } else {
+            resolvedKind = .car
+            errors[.kind] = .required
+        }
+
         let make = make.trimmingCharacters(in: .whitespacesAndNewlines)
         if make.isEmpty { errors[.make] = .required }
         let model = model.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -97,7 +119,7 @@ public struct VehicleDraft: Hashable, Sendable {
             throw Errors(fields: errors)
         }
         do {
-            return try Vehicle(id: id, kind: kind, make: make, model: model, year: year, mileageKm: mileage)
+            return try Vehicle(id: id, kind: resolvedKind, make: make, model: model, year: year, mileageKm: mileage)
         } catch {
             // Недостижимо, пока проверки выше повторяют инварианты модели.
             throw Errors(fields: [.mileage: .invalid(error)])

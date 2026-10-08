@@ -10,9 +10,15 @@ public enum PeriodUnit: Hashable, Sendable, CaseIterable {
 public struct MaintenanceRuleDraft: Hashable, Sendable {
     public var serviceTypeChoice: ServiceTypeChoice
     public var otherServiceTypeText: String
-    public var usesPeriod: Bool
-    public var periodValueText: String
-    public var periodUnit: PeriodUnit
+    // Любая запись в поле интервала по времени — явное действие пользователя: сырой незнакомый период после неё
+    // не сохраняется (решение 9e плана этапа 12, открытый вопрос S). `didSet` не срабатывает в `init`.
+    public var usesPeriod: Bool { didSet { keepsUnrecognizedPeriod = false } }
+    public var periodValueText: String { didSet { keepsUnrecognizedPeriod = false } }
+    public var periodUnit: PeriodUnit { didSet { keepsUnrecognizedPeriod = false } }
+    /// Исходная строка интервала по времени, которого клиент не знает (`"weeks:2"`); форма показывает её как есть.
+    public let unrecognizedPeriod: String?
+    /// Поля интервала по времени ещё не трогали, и у правила есть сырой период: сохранение его не сбрасывает.
+    public private(set) var keepsUnrecognizedPeriod: Bool
     public var usesDistance: Bool
     public var distanceText: String
     /// «Последнее ТО было»: от этой даты и пробега считается срок, пока записей этого типа нет.
@@ -25,6 +31,7 @@ public struct MaintenanceRuleDraft: Hashable, Sendable {
         usesPeriod: Bool = true,
         periodValueText: String = "",
         periodUnit: PeriodUnit = .months,
+        unrecognizedPeriod: String? = nil,
         usesDistance: Bool = false,
         distanceText: String = "",
         startDate: Date = Date(),
@@ -35,6 +42,8 @@ public struct MaintenanceRuleDraft: Hashable, Sendable {
         self.usesPeriod = usesPeriod
         self.periodValueText = periodValueText
         self.periodUnit = periodUnit
+        self.unrecognizedPeriod = unrecognizedPeriod
+        self.keepsUnrecognizedPeriod = unrecognizedPeriod != nil
         self.usesDistance = usesDistance
         self.distanceText = distanceText
         self.startDate = startDate
@@ -42,7 +51,9 @@ public struct MaintenanceRuleDraft: Hashable, Sendable {
     }
 
     /// Черновик для правки существующего правила: обратное отображение `makeRule`.
-    public init(rule: MaintenanceRule) {
+    /// - Parameter unrecognizedPeriod: сырой период, который клиент не понял; пока поля интервала по времени
+    ///   не тронуты, он сохраняется (`keepsUnrecognizedPeriod`).
+    public init(rule: MaintenanceRule, unrecognizedPeriod: String? = nil) {
         var otherText = ""
         if case .other(let text) = rule.serviceType { otherText = text }
         var unit = PeriodUnit.months
@@ -53,6 +64,7 @@ public struct MaintenanceRuleDraft: Hashable, Sendable {
             usesPeriod: rule.period != nil,
             periodValueText: rule.period.map { String($0.value) } ?? "",
             periodUnit: unit,
+            unrecognizedPeriod: unrecognizedPeriod,
             usesDistance: rule.distanceKm != nil,
             distanceText: rule.distanceKm.map(String.init) ?? "",
             startDate: rule.start.date,

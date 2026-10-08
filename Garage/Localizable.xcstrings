@@ -1281,6 +1281,28 @@
         }
       }
     },
+    "Unknown kind (%@)" : {
+      "comment" : "Пункт пикера вида машины, когда сервер прислал вид, которого это приложение не знает; %@ — исходная строка.",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Неизвестный вид (%@)"
+          }
+        }
+      }
+    },
+    "Time for %@" : {
+      "comment" : "Заголовок уведомления о сроке обслуживания; %@ — тип работ.",
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пора: %@"
+          }
+        }
+      }
+    },
     "Kind" : {
       "localizations" : {
         "ru" : {

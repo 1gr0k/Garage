@@ -194,9 +194,23 @@ ViewModel (`makeServiceRecordFormViewModel(vehicleID:currentMileageKm:)`) и о�
 
 ## Напоминания о ТО
 
-План: `docs/plans/stage-12-reminders.md`. Часть A (GarageCore, контракт, терпимое чтение) и часть S (вид
-`maintenanceRule` на сервере и в GarageSync) реализованы; в GarageStorage пока заглушка: правила, пришедшие с
-сервера, попадают в `skipped` до части B. Хранилище, уведомления и UI — часть B.
+План: `docs/plans/stage-12-reminders.md`. Часть A (GarageCore, контракт, терпимое чтение), часть S (вид
+`maintenanceRule` на сервере и в GarageSync) и часть B1 (хранилище правил, T7, уведомления, координатор) реализованы.
+Экран правил, форма и секция на экране машины (B0, B3–B4) — отдельной сессией.
+
+- Хранилище: `MaintenanceRuleEntity` (каскад с `VehicleEntity`), `RuleLog` (очередь синхронизации в том же сохранении),
+  `SwiftDataMaintenanceRuleRepository` (порт правил + `MaintenanceSnapshotReading`), `DisplayMapping.validRules()`.
+  `schemaVersion` 4; лёгкая миграция без `SchemaMigrationPlan`, тест апгрейда на файле — `MigrationTests`.
+- Сырые значения сервера (решение 9e): `VehicleEntity.rawKind` / `MaintenanceRuleEntity.rawPeriod` живут, пока
+  пользователь явно не тронул поле. Намерение передаётся портом: `VehicleKindChange` (`keepUnrecognized` / `set`) и
+  `MaintenancePeriodChange`; в форме это «не выбрано» (`VehicleDraft.kind == nil`) и «поля интервала не тронуты»
+  (`MaintenanceRuleDraft.keepsUnrecognizedPeriod`, снимается любой записью в поля).
+- Пересчёт уведомлений: `ReminderCoordinator` (`Garage/App/`) — дебаунс 0,5 с, без параллельных пересчётов; сигналы:
+  `StoreChanges.saves(of:)` (любое сохранение контейнера), `scenePhase == .active`, смена разрешения. Адаптер
+  `UserNotificationsReminderScheduler` тонкий: чистая `makeRequest` (тестируется), `replaceAll` ставит и снимает только
+  свои запросы (`maintenance-rule.<UUID>`); `fireAt` — компоненты без `timeZone`, календарь григорианский. Живой
+  `UNUserNotificationCenter` автотестами не покрыт (нет способа выдать разрешение) — ручная проверка.
+  В UI-режиме вместо него `RecordingReminderScheduler` без системного алерта.
 
 - Домен: `MaintenanceRule` (тип работ, `ServicePeriod` в днях/месяцах, интервал по пробегу, `MaintenanceStart`).
   Срок — чистая функция `MaintenanceSchedule.due(for:records:currentMileageKm:today:calendar:)`: базис — последняя

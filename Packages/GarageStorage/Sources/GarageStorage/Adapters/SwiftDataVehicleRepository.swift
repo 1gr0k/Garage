@@ -15,9 +15,9 @@ public struct SwiftDataVehicleRepository: VehicleRepository {
         try VehicleLog.add(vehicle, in: container)
     }
 
-    public func update(_ vehicle: Vehicle) async throws {
+    public func update(_ vehicle: Vehicle, kind: VehicleKindChange) async throws {
         do {
-            try VehicleLog.update(vehicle, in: container)
+            try VehicleLog.update(vehicle, kind: kind, in: container)
         } catch ServiceLogError.vehicleNotFound(let id) {
             throw RepositoryError.vehicleNotFound(id)
         }

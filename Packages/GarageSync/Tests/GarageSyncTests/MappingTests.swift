@@ -9,10 +9,33 @@ import Testing
     @Test func vehicleGoldenRoundTrips() throws {
         let data = try GoldenExamples.data("vehicle")
         let dto = try APICoding.makeDecoder().decode(VehicleDTO.self, from: data)
-        let vehicle = try Vehicle(dto: dto)
+        let (vehicle, extras) = try Vehicle.decoded(from: dto)
         #expect(vehicle.kind == .motorcycle)
-        #expect(VehicleDTO(vehicle) == dto)
-        #expect(try JSONValue(data: APICoding.makeEncoder().encode(VehicleDTO(vehicle))) == JSONValue(data: data))
+        #expect(extras.rawKind == nil)
+        #expect(VehicleDTO(vehicle, extras: extras) == dto)
+        #expect(
+            try JSONValue(data: APICoding.makeEncoder().encode(VehicleDTO(vehicle, extras: extras)))
+                == JSONValue(data: data))
+    }
+
+    // T7 (решение 9e плана этапа 12): незнакомый вид читается как автомобиль, сырая строка уходит обратно.
+    @Test func goldenUnknownVehicleKindIsReadAsCarAndSentBackUnchanged() throws {
+        let data = try GoldenExamples.data("vehicle-unknown-kind")
+        let dto = try APICoding.makeDecoder().decode(VehicleDTO.self, from: data)
+        let (vehicle, extras) = try Vehicle.decoded(from: dto)
+        #expect(vehicle.kind == .car)
+        #expect(extras.rawKind == "tractor")
+        #expect(VehicleDTO(vehicle, extras: extras) == dto)
+        #expect(
+            try JSONValue(data: APICoding.makeEncoder().encode(VehicleDTO(vehicle, extras: extras)))
+                == JSONValue(data: data))
+    }
+
+    /// Положительный контроль: без сырой строки вид берётся из домена.
+    @Test func kindIsEncodedFromTheDomainWithoutRawValue() throws {
+        let bike = Vehicle.samples[2]
+        #expect(bike.kind == .motorcycle)
+        #expect(VehicleDTO(bike, extras: VehicleSyncExtras()).kind == "motorcycle")
     }
 
     @Test func serviceRecordGoldenRoundTrips() throws {
@@ -49,13 +72,14 @@ import Testing
                 == "other:battery")
     }
 
-    @Test func unknownVehicleKindThrows() {
-        let dto = VehicleDTO(id: IDs.vehicle, kind: "spaceship", make: "A", model: "B", year: 2000, mileageKm: 1)
-        #expect(throws: SyncMappingError.unknownVehicleKind("spaceship")) { try Vehicle(dto: dto) }
-    }
-
     @Test func negativeMileageThrowsValidationError() {
         let dto = VehicleDTO(id: IDs.vehicle, kind: "car", make: "A", model: "B", year: 2000, mileageKm: -5)
-        #expect(throws: ValidationError.negativeMileage(-5)) { try Vehicle(dto: dto) }
+        #expect(throws: ValidationError.negativeMileage(-5)) { try Vehicle.decoded(from: dto) }
+    }
+
+    /// Незнакомый вид не отбрасывает машину, как раньше, но битые поля по-прежнему отбрасывают.
+    @Test func unknownKindWithInvalidFieldsStillThrows() {
+        let dto = VehicleDTO(id: IDs.vehicle, kind: "tractor", make: "A", model: "B", year: 2000, mileageKm: -5)
+        #expect(throws: ValidationError.negativeMileage(-5)) { try Vehicle.decoded(from: dto) }
     }
 }

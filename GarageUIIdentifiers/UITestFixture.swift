@@ -17,6 +17,11 @@
             Vehicle.SampleID.rockhopper: 0,
         ]
 
+        /// Фиксированное «сегодня» тестового режима (2025-06-01 12:00 UTC): статусы напоминаний не зависят от даты прогона.
+        static let today = Date(timeIntervalSince1970: 1_748_779_200)
+        /// Часовой пояс календаря тестового режима.
+        static let timeZoneIdentifier = "UTC"
+
         /// Запись Land Cruiser для правки пробега.
         static let recordToEdit = UUID(uuidString: "5A3F1000-6C0D-4B7E-9A10-000000000001")!
         /// Запись Transporter с фото чека.

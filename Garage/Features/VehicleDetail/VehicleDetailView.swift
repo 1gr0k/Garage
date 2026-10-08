@@ -33,6 +33,7 @@ private struct VehicleDetailContent: View {
 
     private struct VehicleEditRequest: Identifiable {
         let vehicle: Vehicle
+        let unrecognizedKind: String?
         let recordsMileageKm: Int?
         var id: Vehicle.ID { vehicle.id }
     }
@@ -56,8 +57,8 @@ private struct VehicleDetailContent: View {
 
     var body: some View {
         Group {
-            if let vehicle = vehicleEntities.validVehicles().first?.vehicle {
-                content(vehicle: vehicle)
+            if let item = vehicleEntities.validVehicles().first {
+                content(vehicle: item.vehicle, rawKind: item.rawKind)
             } else {
                 ContentUnavailableView("Vehicle Not Found", systemImage: "questionmark.circle")
                     .accessibilityIdentifier(AccessibilityID.VehicleDetail.notFound)
@@ -71,7 +72,8 @@ private struct VehicleDetailContent: View {
         .sheet(item: $vehicleEdit) { request in
             VehicleFormView(
                 viewModel: dependencies.makeVehicleFormViewModel(
-                    editing: request.vehicle, recordsMileageKm: request.recordsMileageKm))
+                    editing: request.vehicle, unrecognizedKind: request.unrecognizedKind,
+                    recordsMileageKm: request.recordsMileageKm))
         }
         .sheet(item: $recordEdit) { request in
             ServiceRecordFormView(
@@ -81,7 +83,7 @@ private struct VehicleDetailContent: View {
         }
     }
 
-    private func content(vehicle: Vehicle) -> some View {
+    private func content(vehicle: Vehicle, rawKind: String?) -> some View {
         let records = recordEntities.validRecords()
         let receiptIDs = receiptIDs
         let mileage = vehicle.currentMileageKm(records: records)
@@ -129,7 +131,7 @@ private struct VehicleDetailContent: View {
             Menu("More", systemImage: "ellipsis.circle") {
                 Button("Edit", systemImage: "pencil") {
                     vehicleEdit = VehicleEditRequest(
-                        vehicle: vehicle, recordsMileageKm: records.map(\.mileageKm).max())
+                        vehicle: vehicle, unrecognizedKind: rawKind, recordsMileageKm: records.map(\.mileageKm).max())
                 }
                 .disabled(viewModel.isDeleting)
                 .accessibilityIdentifier(AccessibilityID.VehicleDetail.edit)

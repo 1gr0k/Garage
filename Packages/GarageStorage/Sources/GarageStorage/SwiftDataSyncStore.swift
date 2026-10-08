@@ -2,7 +2,10 @@ import Foundation
 import GarageAPI
 import GarageCore
 import GarageSync
+import OSLog
 import SwiftData
+
+let syncLogger = Logger(subsystem: "Garage", category: "Sync")
 
 public enum ReceiptBlobError: Error, Equatable, Sendable {
     case hashMismatch(expected: String)
@@ -14,12 +17,22 @@ public enum ReceiptBlobError: Error, Equatable, Sendable {
 public actor SwiftDataSyncStore: ModelActor, SyncStore, ReceiptBlobStore {
     public nonisolated let modelContainer: ModelContainer
     public nonisolated let modelExecutor: any ModelExecutor
+    private let onUnreadableChange: @Sendable (_ refKey: String, _ error: any Error) -> Void
 
-    public init(modelContainer: ModelContainer) {
+    /// - Parameter onUnreadableChange: вызывается для строки очереди, которую не удалось прочитать (например, записана
+    ///   будущей версией); по умолчанию пишет в лог `Sync`. Строка пропускается и остальную очередь не блокирует.
+    public init(
+        modelContainer: ModelContainer,
+        onUnreadableChange: (@Sendable (_ refKey: String, _ error: any Error) -> Void)? = nil
+    ) {
         let context = ModelContext(modelContainer)
         context.autosaveEnabled = false
         self.modelContainer = modelContainer
         self.modelExecutor = DefaultSerialModelExecutor(modelContext: context)
+        self.onUnreadableChange =
+            onUnreadableChange ?? { refKey, error in
+                syncLogger.error("Unreadable queue row \(refKey, privacy: .public): \(error)")
+            }
     }
 
     // MARK: Queue
@@ -27,8 +40,15 @@ public actor SwiftDataSyncStore: ModelActor, SyncStore, ReceiptBlobStore {
     public func pendingChanges() throws -> [PendingChange] {
         let descriptor = FetchDescriptor<PendingChangeEntity>(sortBy: [SortDescriptor(\.sequence)])
         let entities = try modelContext.fetch(descriptor)
-        // An unreadable row (e.g. written by a future version) must not block the whole queue.
-        return entities.compactMap { try? SyncQueue.pendingChange($0) }
+        // An unreadable row (e.g. written by a future version) must not block the whole queue, but must not vanish silently.
+        return entities.compactMap { entity in
+            do {
+                return try SyncQueue.pendingChange(entity)
+            } catch {
+                onUnreadableChange(entity.refKey, error)
+                return nil
+            }
+        }
     }
 
     public func pendingChange(for ref: EntityRef) throws -> PendingChange? {
@@ -74,18 +94,20 @@ public actor SwiftDataSyncStore: ModelActor, SyncStore, ReceiptBlobStore {
     public func apply(_ change: RemoteChange, for ref: EntityRef) throws {
         do {
             switch change.operation {
-            case .upsert(.vehicle(let vehicle)):
-                if let entity = try vehicleEntity(vehicle.id) {
+            case .upsert(.vehicle(let vehicle, let extras)):
+                let entity: VehicleEntity
+                if let existing = try vehicleEntity(vehicle.id) {
+                    entity = existing
                     entity.update(from: vehicle)
                 } else {
-                    modelContext.insert(VehicleEntity(vehicle))
+                    entity = VehicleEntity(vehicle)
+                    modelContext.insert(entity)
                 }
+                entity.rawKind = extras.rawKind
             case .upsert(.serviceRecord(let record, let extras)):
                 try upsert(record, extras: extras)
-            case .upsert(.maintenanceRule):
-                // Заглушка до части B (этап 12): хранилища правил ещё нет. Ничего не изменено, движок запишет
-                // изменение в `skipped` и пойдёт дальше; рост `schemaVersion` в B сбросит курсор, и правила придут заново.
-                throw SyncStoreError(cannotApply: StorageMappingError.unsupportedEntity(.maintenanceRule))
+            case .upsert(.maintenanceRule(let rule, let extras)):
+                try upsert(rule, extras: extras)
             case .delete(let target):
                 try delete(target)
             }
@@ -116,20 +138,43 @@ public actor SwiftDataSyncStore: ModelActor, SyncStore, ReceiptBlobStore {
         entity.setReceiptRef(extras.receipt)
     }
 
+    private func upsert(_ rule: MaintenanceRule, extras: RuleSyncExtras) throws {
+        guard let vehicle = try vehicleEntity(rule.vehicleID) else {
+            // Nothing has been changed yet; the engine reports the change as skipped.
+            throw SyncStoreError(cannotApply: StorageMappingError.missingVehicle(rule.vehicleID))
+        }
+        let entity: MaintenanceRuleEntity
+        if let existing = try ruleEntity(rule.id) {
+            entity = existing
+            entity.vehicle = vehicle
+            entity.update(from: rule)
+        } else {
+            entity = try MaintenanceRuleEntity(rule, vehicle: vehicle)
+            modelContext.insert(entity)
+        }
+        entity.rawServiceType = extras.rawServiceType
+        entity.rawPeriod = extras.rawPeriod
+    }
+
     private func delete(_ ref: EntityRef) throws {
         switch ref.kind {
         case .vehicle:
             if let entity = try vehicleEntity(ref.id) {
-                // Контракт `SyncStore.apply`: записи уходят каскадом, их pending-upsert'ы — вместе с ними.
-                try SyncQueue.dropPendingUpserts(ofRecordsOf: entity, in: modelContext)
+                // Контракт `SyncStore.apply`: записи и правила уходят каскадом, их pending-upsert'ы — вместе с ними.
+                try SyncQueue.dropPendingUpserts(ofChildrenOf: entity, in: modelContext)
                 modelContext.delete(entity)
             }
         case .serviceRecord:
             if let entity = try recordEntity(ref.id) { modelContext.delete(entity) }
         case .maintenanceRule:
-            // Заглушка до части B: правил в хранилище нет, удалять нечего.
-            break
+            if let entity = try ruleEntity(ref.id) { modelContext.delete(entity) }
         }
+    }
+
+    private func ruleEntity(_ id: UUID) throws -> MaintenanceRuleEntity? {
+        var descriptor = FetchDescriptor<MaintenanceRuleEntity>(predicate: #Predicate { $0.id == id })
+        descriptor.fetchLimit = 1
+        return try modelContext.fetch(descriptor).first
     }
 
     private func vehicleEntity(_ id: UUID) throws -> VehicleEntity? {

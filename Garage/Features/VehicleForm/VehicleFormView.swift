@@ -18,7 +18,11 @@ struct VehicleFormView: View {
             Form {
                 Section {
                     Picker("Kind", selection: $viewModel.draft.kind) {
-                        ForEach(VehicleKind.allCases, id: \.self) { Text($0.title).tag($0) }
+                        // Незнакомый серверный вид: вариант не выбран, пока пользователь не выберет явно.
+                        if let raw = viewModel.draft.unrecognizedKind {
+                            Text("Unknown kind (\(raw))").tag(VehicleKind?.none)
+                        }
+                        ForEach(VehicleKind.allCases, id: \.self) { Text($0.title).tag(Optional($0)) }
                     }
                     .accessibilityIdentifier(AccessibilityID.VehicleForm.kind)
                 }

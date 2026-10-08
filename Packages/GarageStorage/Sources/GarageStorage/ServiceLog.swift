@@ -6,6 +6,7 @@ import SwiftData
 public enum ServiceLogError: Error, Hashable, Sendable {
     case vehicleNotFound(Vehicle.ID)
     case recordNotFound(ServiceRecord.ID)
+    case ruleNotFound(MaintenanceRule.ID)
 }
 
 public enum ServiceLog {
@@ -137,14 +138,18 @@ public enum VehicleLog {
 
     /// Заменяет поля машины с тем же `id` и ставит upsert в очередь синхронизации, в одном сохранении.
     ///
-    /// Работает в свежем `ModelContext`, как `ServiceLog.update`.
-    public static func update(_ vehicle: Vehicle, in container: ModelContainer) throws {
-        try update(vehicle, in: container) { try $0.save() }
+    /// Работает в свежем `ModelContext`, как `ServiceLog.update`. `kind`: `keepUnrecognized` не трогает
+    /// `VehicleEntity.rawKind`, `set` сбрасывает его (решение 9e плана этапа 12).
+    public static func update(
+        _ vehicle: Vehicle, kind: VehicleKindChange, in container: ModelContainer
+    ) throws {
+        try update(vehicle, kind: kind, in: container) { try $0.save() }
     }
 
     /// `update` с подменяемым сохранением, чтобы тесты могли имитировать сбой.
     static func update(
         _ vehicle: Vehicle,
+        kind: VehicleKindChange = .set,
         in container: ModelContainer,
         save: (ModelContext) throws -> Void
     ) throws {
@@ -154,7 +159,9 @@ public enum VehicleLog {
             throw ServiceLogError.vehicleNotFound(vehicle.id)
         }
         entity.update(from: vehicle)
-        try SyncQueue.enqueueUpsert(.vehicle(vehicle), in: context)
+        if kind == .set { entity.rawKind = nil }
+        // После правки вида: в extras должна попасть актуальная сырая строка (или её отсутствие).
+        try SyncQueue.enqueueUpsert(.vehicle(vehicle, entity.syncExtras), in: context)
         try save(context)
     }
 
@@ -179,13 +186,98 @@ public enum VehicleLog {
         // Delete ставится всегда, даже без `SyncVersionEntity`: как у `ServiceLog.delete`, её отсутствие не значит
         // «на сервере машины нет». Pending-upsert самой машины схлопывается в delete.
         try SyncQueue.enqueueDelete(EntityRef(kind: .vehicle, id: id), in: context)
-        try SyncQueue.dropPendingUpserts(ofRecordsOf: entity, in: context)
+        try SyncQueue.dropPendingUpserts(ofChildrenOf: entity, in: context)
         context.delete(entity)
         try save(context)
     }
 
     private static func vehicleEntity(id: Vehicle.ID, in context: ModelContext) throws -> VehicleEntity? {
         var descriptor = FetchDescriptor<VehicleEntity>(predicate: #Predicate { $0.id == id })
+        descriptor.fetchLimit = 1
+        return try context.fetch(descriptor).first
+    }
+}
+
+public enum RuleLog {
+    /// Вставляет правило и ставит upsert в очередь синхронизации, в одном сохранении.
+    ///
+    /// Работает в свежем `ModelContext`, как `ServiceLog.add`.
+    public static func add(_ rule: MaintenanceRule, in container: ModelContainer) throws {
+        try add(rule, in: container) { try $0.save() }
+    }
+
+    /// `add` с подменяемым сохранением, чтобы тесты могли имитировать сбой.
+    static func add(
+        _ rule: MaintenanceRule,
+        in container: ModelContainer,
+        save: (ModelContext) throws -> Void
+    ) throws {
+        let context = ModelContext(container)
+        context.autosaveEnabled = false
+        let vehicleID = rule.vehicleID
+        var descriptor = FetchDescriptor<VehicleEntity>(predicate: #Predicate { $0.id == vehicleID })
+        descriptor.fetchLimit = 1
+        guard let vehicle = try context.fetch(descriptor).first else {
+            throw ServiceLogError.vehicleNotFound(vehicleID)
+        }
+        let entity = try MaintenanceRuleEntity(rule, vehicle: vehicle)
+        context.insert(entity)
+        try SyncQueue.enqueueUpsert(.maintenanceRule(rule, entity.syncExtras), in: context)
+        try save(context)
+    }
+
+    /// Заменяет поля правила с тем же `id` и ставит upsert в очередь синхронизации, в одном сохранении.
+    /// `period`: `keepUnrecognized` не трогает `rawPeriod`, `set` сбрасывает его (открытый вопрос S плана этапа 12).
+    public static func update(
+        _ rule: MaintenanceRule, period: MaintenancePeriodChange, in container: ModelContainer
+    ) throws {
+        try update(rule, period: period, in: container) { try $0.save() }
+    }
+
+    /// `update` с подменяемым сохранением, чтобы тесты могли имитировать сбой.
+    static func update(
+        _ rule: MaintenanceRule,
+        period: MaintenancePeriodChange,
+        in container: ModelContainer,
+        save: (ModelContext) throws -> Void
+    ) throws {
+        let context = ModelContext(container)
+        context.autosaveEnabled = false
+        guard let entity = try ruleEntity(id: rule.id, in: context) else {
+            throw ServiceLogError.ruleNotFound(rule.id)
+        }
+        entity.update(from: rule)
+        // Незнакомый серверный тип живёт в `rawServiceType`; если тип сменили, он не должен воскреснуть.
+        if let raw = entity.rawServiceType, rule.serviceType != .other(raw) {
+            entity.rawServiceType = nil
+        }
+        if period == .set { entity.rawPeriod = nil }
+        try SyncQueue.enqueueUpsert(.maintenanceRule(rule, entity.syncExtras), in: context)
+        try save(context)
+    }
+
+    /// Удаляет правило и ставит delete в очередь, в одном сохранении. Правила нет — не ошибка.
+    public static func delete(id: MaintenanceRule.ID, in container: ModelContainer) throws {
+        try delete(id: id, in: container) { try $0.save() }
+    }
+
+    /// `delete` с подменяемым сохранением, чтобы тесты могли имитировать сбой.
+    static func delete(
+        id: MaintenanceRule.ID,
+        in container: ModelContainer,
+        save: (ModelContext) throws -> Void
+    ) throws {
+        let context = ModelContext(container)
+        context.autosaveEnabled = false
+        guard let entity = try ruleEntity(id: id, in: context) else { return }
+        // Delete ставится всегда, даже без `SyncVersionEntity`: довод тот же, что у `ServiceLog.delete`.
+        try SyncQueue.enqueueDelete(EntityRef(kind: .maintenanceRule, id: id), in: context)
+        context.delete(entity)
+        try save(context)
+    }
+
+    private static func ruleEntity(id: MaintenanceRule.ID, in context: ModelContext) throws -> MaintenanceRuleEntity? {
+        var descriptor = FetchDescriptor<MaintenanceRuleEntity>(predicate: #Predicate { $0.id == id })
         descriptor.fetchLimit = 1
         return try context.fetch(descriptor).first
     }

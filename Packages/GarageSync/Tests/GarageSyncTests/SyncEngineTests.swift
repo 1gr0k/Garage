@@ -374,7 +374,7 @@ private func conflict(_ reason: ConflictReason, _ current: ServerChange, id: UUI
 
     @Test func invalidRemoteChangeIsSkippedNotFatal() async throws {
         let store = InMemorySyncStore()
-        let bad = VehicleDTO(id: IDs.vehicle, kind: "spaceship", make: "A", model: "B", year: 2000, mileageKm: 1)
+        let bad = VehicleDTO(id: IDs.vehicle, kind: "car", make: "A", model: "B", year: 2000, mileageKm: -1)
         let pull = PullResponse(
             changes: [
                 ServerChange(
@@ -463,7 +463,7 @@ private func conflict(_ reason: ConflictReason, _ current: ServerChange, id: UUI
         await store.setVersion(5, of: vehicleRef)
         await store.upsertLocal(
             .vehicle(makeVehicle()), modifiedAt: date("2026-10-07T10:00:00.000Z"), changeID: IDs.changeA)
-        let bad = VehicleDTO(id: IDs.vehicle, kind: "spaceship", make: "A", model: "B", year: 2000, mileageKm: 1)
+        let bad = VehicleDTO(id: IDs.vehicle, kind: "car", make: "A", model: "B", year: 2000, mileageKm: -1)
         let current = ServerChange(
             version: 9, modifiedAt: date("2026-10-07T11:00:00.000Z"), operation: .upsert(.vehicle(bad)))
         let transport = FakeHTTPTransport([

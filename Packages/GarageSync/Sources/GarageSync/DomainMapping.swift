@@ -2,8 +2,17 @@ import Foundation
 import GarageAPI
 import GarageCore
 
-public enum SyncMappingError: Error, Hashable, Sendable {
-    case unknownVehicleKind(String)
+/// Что сервер знает о машине, а домен — нет (решение 9a, T7). Адаптер хранилища держит поле рядом с машиной и
+/// отдаёт обратно при push, поэтому локальная правка его не стирает.
+public struct VehicleSyncExtras: Hashable, Sendable {
+    /// Исходная строка `kind`, если сервер прислал вид, которого клиент не знает (в домене он читается как `.car`).
+    /// Уходит обратно, пока пользователь не выбрал вид явно: адаптер сбрасывает поле только по `VehicleKindChange.set`
+    /// (сравнить `vehicle.kind` с сырым значением нельзя, решение 9e).
+    public var rawKind: String?
+
+    public init(rawKind: String? = nil) {
+        self.rawKind = rawKind
+    }
 }
 
 /// What the server knows about a record but the domain model does not. The storage adapter keeps both
@@ -38,19 +47,28 @@ public struct RuleSyncExtras: Hashable, Sendable {
 }
 
 extension Vehicle {
-    public init(dto: VehicleDTO) throws {
-        guard let kind = VehicleKind(rawValue: dto.kind) else {
-            throw SyncMappingError.unknownVehicleKind(dto.kind)
+    /// Маппинг DTO в домен. Незнакомый `kind` читается как `.car`, исходная строка остаётся в `extras`
+    /// (раньше такая машина пропускалась, а вместе с ней и все её записи: `cannotApply` без машины).
+    public static func decoded(from dto: VehicleDTO) throws -> (vehicle: Vehicle, extras: VehicleSyncExtras) {
+        var extras = VehicleSyncExtras()
+        let kind: VehicleKind
+        if let known = VehicleKind(rawValue: dto.kind) {
+            kind = known
+        } else {
+            kind = .car
+            extras.rawKind = dto.kind
         }
-        try self.init(
+        let vehicle = try Vehicle(
             id: dto.id, kind: kind, make: dto.make, model: dto.model, year: dto.year, mileageKm: dto.mileageKm)
+        return (vehicle, extras)
     }
 }
 
 extension VehicleDTO {
-    public init(_ vehicle: Vehicle) {
+    public init(_ vehicle: Vehicle, extras: VehicleSyncExtras = VehicleSyncExtras()) {
+        // Сырая строка уходит, пока она есть: хранилище сбрасывает её только явным выбором вида (`VehicleKindChange.set`).
         self.init(
-            id: vehicle.id, kind: vehicle.kind.rawValue, make: vehicle.make, model: vehicle.model,
+            id: vehicle.id, kind: extras.rawKind ?? vehicle.kind.rawValue, make: vehicle.make, model: vehicle.model,
             year: vehicle.year, mileageKm: vehicle.mileageKm)
     }
 }

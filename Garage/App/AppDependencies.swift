@@ -2,9 +2,12 @@ import Foundation
 import GarageCore
 import GarageStorage
 import GarageSync
+import OSLog
 import Observation
 import SwiftData
 import UIKit
+
+private let reminderLogger = Logger(subsystem: "Garage", category: "Reminders")
 
 /// Composition root: единственное место, где приложение создаёт адаптеры хранилища и сети
 /// и собирает из них use case'ы и ViewModel.
@@ -23,10 +26,26 @@ final class AppDependencies {
     private let vehicleRepository: any VehicleRepository
     private let currentYear: () -> Int
 
+    // Напоминания о ТО (этап 12). Экран правил и формы берут отсюда use case'ы — в части UI.
+    // Как и остальные порты, не торчат во вью: ViewModel экрана правил получит их через фабрики (часть UI).
+    private let ruleRepository: any MaintenanceRuleRepository
+    private let addMaintenanceRule: AddMaintenanceRule
+    private let updateMaintenanceRule: UpdateMaintenanceRule
+    private let reminderScheduler: any ReminderScheduling
+    /// Один на приложение: единственный запускатель пересчёта уведомлений.
+    let reminderCoordinator: ReminderCoordinator
+
+    /// - Parameters:
+    ///   - reminderScheduler: боевой по умолчанию; тесты, превью и UI-режим подставляют свой.
+    ///   - today: «сейчас» для сроков; UI-режим фиксирует дату фикстуры (`UITestFixture.today`, решение 12).
+    ///   - calendar: календарь для сроков; UI-режим фиксирует часовой пояс фикстуры.
     init(
         container: ModelContainer,
         credentials: any SyncCredentialsStore = KeychainCredentialsStore(),
         registrar: any DeviceRegistrar = SyncAPIDeviceRegistrar(),
+        reminderScheduler: any ReminderScheduling = UserNotificationsReminderScheduler(),
+        today: @escaping @Sendable () -> Date = { Date() },
+        calendar: @escaping @Sendable () -> Calendar = { Calendar.current },
         deviceName: @escaping @MainActor () -> String = { UIDevice.current.name }
     ) {
         self.container = container
@@ -49,6 +68,24 @@ final class AppDependencies {
         updateVehicle = UpdateVehicle(vehicles: vehicles)
         vehicleRepository = vehicles
         currentYear = { Calendar.current.component(.year, from: Date()) }
+
+        let rules = SwiftDataMaintenanceRuleRepository(container: container)
+        ruleRepository = rules
+        addMaintenanceRule = AddMaintenanceRule(rules: rules)
+        updateMaintenanceRule = UpdateMaintenanceRule(rules: rules)
+        self.reminderScheduler = reminderScheduler
+        let reschedule = RescheduleReminders(snapshot: rules, scheduler: reminderScheduler)
+        let coordinator = ReminderCoordinator {
+            do {
+                try await reschedule.execute(now: today(), calendar: calendar())
+            } catch {
+                reminderLogger.error("Reminder recalculation failed: \(error)")
+            }
+        }
+        // Любое сохранение (запись, правка, каскад, pull) и первый запуск → пересчёт; дальше — `active` из `RootView`.
+        coordinator.observe(StoreChanges.saves(of: container))
+        coordinator.noteChange()
+        reminderCoordinator = coordinator
     }
 
     func makeVehicleFormViewModel() -> VehicleFormViewModel {
@@ -57,9 +94,11 @@ final class AppDependencies {
     }
 
     /// Форма правки. `recordsMileageKm` — пробег по записям для подсказки (считает вызывающий).
-    func makeVehicleFormViewModel(editing vehicle: Vehicle, recordsMileageKm: Int?) -> VehicleFormViewModel {
+    func makeVehicleFormViewModel(
+        editing vehicle: Vehicle, unrecognizedKind: String? = nil, recordsMileageKm: Int?
+    ) -> VehicleFormViewModel {
         VehicleFormViewModel(
-            mode: .edit(original: vehicle), recordsMileageKm: recordsMileageKm,
+            mode: .edit(original: vehicle, unrecognizedKind: unrecognizedKind), recordsMileageKm: recordsMileageKm,
             addVehicle: addVehicle, updateVehicle: updateVehicle, currentYear: currentYear)
     }
 
@@ -97,6 +136,13 @@ final class AppDependencies {
     static func preview() -> AppDependencies {
         let container = try! GarageStore.makeContainer(inMemory: true)
         SampleSeeder.insertSamples(into: container.mainContext)
-        return AppDependencies(container: container)
+        return AppDependencies(container: container, reminderScheduler: DisabledReminderScheduler())
     }
+}
+
+/// Планировщик, который ничего не ставит: превью и тесты не должны трогать настоящий центр уведомлений.
+nonisolated struct DisabledReminderScheduler: ReminderScheduling {
+    func authorization() async -> ReminderAuthorization { .denied }
+    func requestAuthorization() async -> ReminderAuthorization { .denied }
+    func replaceAll(with reminders: [ScheduledReminder]) async throws {}
 }

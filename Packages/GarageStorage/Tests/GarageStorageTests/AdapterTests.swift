@@ -107,7 +107,7 @@ private actor URLCancelledTransport: HTTPTransport {
 
         var changed = vehicle
         changed.make = "Lexus"
-        try await repository.update(changed)
+        try await repository.update(changed, kind: .set)
         #expect(try ModelContext(container).fetch(FetchDescriptor<VehicleEntity>()).first?.make == "Lexus")
 
         try await repository.delete(id: vehicle.id)
@@ -121,7 +121,7 @@ private actor URLCancelledTransport: HTTPTransport {
         let vehicle = Vehicle.samples[0]
 
         await #expect(throws: RepositoryError.vehicleNotFound(vehicle.id)) {
-            try await SwiftDataVehicleRepository(container: container).update(vehicle)
+            try await SwiftDataVehicleRepository(container: container).update(vehicle, kind: .set)
         }
         #expect(try await pendingChanges(container).isEmpty)
     }

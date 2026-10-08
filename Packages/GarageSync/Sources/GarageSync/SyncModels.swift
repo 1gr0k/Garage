@@ -14,13 +14,18 @@ public struct EntityRef: Hashable, Sendable {
 
 /// The full state of a synced entity in domain terms.
 public enum SyncEntity: Hashable, Sendable {
-    case vehicle(Vehicle)
+    case vehicle(Vehicle, VehicleSyncExtras)
     case serviceRecord(ServiceRecord, RecordSyncExtras)
     case maintenanceRule(MaintenanceRule, RuleSyncExtras)
 
+    /// Машина без сырых значений сервера.
+    public static func vehicle(_ vehicle: Vehicle) -> SyncEntity {
+        .vehicle(vehicle, VehicleSyncExtras())
+    }
+
     public var ref: EntityRef {
         switch self {
-        case .vehicle(let vehicle): EntityRef(kind: .vehicle, id: vehicle.id)
+        case .vehicle(let vehicle, _): EntityRef(kind: .vehicle, id: vehicle.id)
         case .serviceRecord(let record, _): EntityRef(kind: .serviceRecord, id: record.id)
         case .maintenanceRule(let rule, _): EntityRef(kind: .maintenanceRule, id: rule.id)
         }
@@ -37,7 +42,7 @@ public enum SyncEntity: Hashable, Sendable {
 
     public var payload: EntityPayload {
         switch self {
-        case .vehicle(let vehicle): .vehicle(VehicleDTO(vehicle))
+        case .vehicle(let vehicle, let extras): .vehicle(VehicleDTO(vehicle, extras: extras))
         case .serviceRecord(let record, let extras): .serviceRecord(ServiceRecordDTO(record, extras: extras))
         case .maintenanceRule(let rule, let extras): .maintenanceRule(MaintenanceRuleDTO(rule, extras: extras))
         }
@@ -46,7 +51,8 @@ public enum SyncEntity: Hashable, Sendable {
     public init(payload: EntityPayload) throws {
         switch payload {
         case .vehicle(let dto):
-            self = .vehicle(try Vehicle(dto: dto))
+            let (vehicle, extras) = try Vehicle.decoded(from: dto)
+            self = .vehicle(vehicle, extras)
         case .serviceRecord(let dto):
             let (record, extras) = try ServiceRecord.decoded(from: dto)
             self = .serviceRecord(record, extras)

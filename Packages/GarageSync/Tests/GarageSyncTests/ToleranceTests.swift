@@ -238,6 +238,32 @@ private func pushedChangeIDs(_ request: HTTPRequest) throws -> [UUID] {
         #expect(try JSONValue(data: APICoding.makeEncoder().encode(sent)) == JSONValue(data: data))
     }
 
+    // T7: машина с незнакомым видом применяется, и записи по ней тоже (раньше машина пропускалась, записи — `cannotApply`).
+    @Test func pullAppliesVehicleOfUnknownKindWithItsRecordsAndKeepsRawKind() async throws {
+        let store = InMemorySyncStore()
+        let transport = FakeHTTPTransport([
+            respond(
+                """
+                {"changes":[
+                  {"version":1,"modifiedAt":"2026-10-07T09:00:00.000Z","op":"upsert","entity":"vehicle",
+                   "data":{"id":"11111111-1111-4111-8111-111111111111","kind":"tractor","make":"Fendt",
+                           "model":"Vario","year":2020,"mileageKm":1200}},
+                  {"version":2,"modifiedAt":"2026-10-07T09:01:00.000Z","op":"upsert","entity":"serviceRecord",
+                   "data":{"id":"22222222-2222-4222-8222-222222222222",
+                           "vehicleID":"11111111-1111-4111-8111-111111111111","date":"2026-10-01T00:00:00.000Z",
+                           "mileageKm":1000,"serviceType":"oilChange","laborCostKopecks":0,"notes":"","parts":[]}}],
+                 "cursor":"2","hasMore":false}
+                """)
+        ])
+        let report = try await makeEngine(store, transport).sync()
+
+        #expect(report.skipped.isEmpty)
+        #expect(report.pulled == 2)
+        #expect(await store.vehicle(IDs.vehicle)?.kind == .car)
+        #expect(await store.extras(ofVehicle: IDs.vehicle)?.rawKind == "tractor")
+        #expect(await store.stored(IDs.record) != nil)
+    }
+
     private func applied(_ id: UUID, _ version: Int64) -> PushResult {
         PushResult(changeID: id, outcome: .applied(version: version))
     }

@@ -1,12 +1,25 @@
 import Foundation
 
+/// Что сделать с интервалом по времени правила при правке — по образцу `VehicleKindChange` (решение 9e плана
+/// этапа 12, открытый вопрос S).
+///
+/// Сервер мог прислать период, которого этот клиент не знает (`"weeks:2"`): в домене `period == nil`, а исходная
+/// строка хранится рядом и уходит обратно. «Пользователь убрал интервал по времени» неотличимо от «не трогал» по
+/// самому правилу, поэтому намерение явное.
+public enum MaintenancePeriodChange: Hashable, Sendable {
+    /// Поле интервала по времени не трогали: сырая строка хранилища остаётся и уходит на сервер без изменений.
+    case keepUnrecognized
+    /// Поле тронули явно (`rule.period`, в том числе `nil`): сырая строка сбрасывается.
+    case set
+}
+
 /// Хранилище правил обслуживания. Очередь синхронизации и каскад с машиной — забота адаптера.
 public protocol MaintenanceRuleRepository: Sendable {
     /// - Throws: `RepositoryError.vehicleNotFound`, если машины правила нет.
     func add(_ rule: MaintenanceRule) async throws
     /// Заменяет поля правила с тем же `id`; `vehicleID` не меняется.
     /// - Throws: `RepositoryError.ruleNotFound`, если правила нет.
-    func update(_ rule: MaintenanceRule) async throws
+    func update(_ rule: MaintenanceRule, period: MaintenancePeriodChange) async throws
     /// Удаляет правило. Правила нет — не ошибка.
     func delete(id: MaintenanceRule.ID) async throws
 }

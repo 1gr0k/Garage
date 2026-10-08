@@ -63,6 +63,7 @@ struct StoredRule: Hashable, Sendable {
 
 actor InMemorySyncStore: SyncStore {
     private(set) var vehicles: [UUID: Vehicle] = [:]
+    private(set) var vehicleExtras: [UUID: VehicleSyncExtras] = [:]
     private(set) var records: [UUID: StoredRecord] = [:]
     private(set) var rules: [UUID: StoredRule] = [:]
     private var versions: [EntityRef: Int64] = [:]
@@ -92,6 +93,7 @@ actor InMemorySyncStore: SyncStore {
     }
 
     func vehicle(_ id: UUID) -> Vehicle? { vehicles[id] }
+    func extras(ofVehicle id: UUID) -> VehicleSyncExtras? { vehicleExtras[id] }
     func stored(_ id: UUID) -> StoredRecord? { records[id] }
     func storedRule(_ id: UUID) -> StoredRule? { rules[id] }
 
@@ -110,7 +112,9 @@ actor InMemorySyncStore: SyncStore {
 
     private func write(_ entity: SyncEntity) {
         switch entity {
-        case .vehicle(let vehicle): vehicles[vehicle.id] = vehicle
+        case .vehicle(let vehicle, let extras):
+            vehicles[vehicle.id] = vehicle
+            vehicleExtras[vehicle.id] = extras
         case .serviceRecord(let record, let extras): records[record.id] = StoredRecord(record: record, extras: extras)
         case .maintenanceRule(let rule, let extras): rules[rule.id] = StoredRule(rule: rule, extras: extras)
         }
@@ -118,7 +122,9 @@ actor InMemorySyncStore: SyncStore {
 
     private func remove(_ ref: EntityRef) {
         switch ref.kind {
-        case .vehicle: vehicles[ref.id] = nil
+        case .vehicle:
+            vehicles[ref.id] = nil
+            vehicleExtras[ref.id] = nil
         case .serviceRecord: records[ref.id] = nil
         case .maintenanceRule: rules[ref.id] = nil
         }

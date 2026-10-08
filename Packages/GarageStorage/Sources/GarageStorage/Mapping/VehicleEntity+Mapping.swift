@@ -13,6 +13,7 @@ extension VehicleEntity {
         )
     }
 
+    /// Обновляет скалярные поля. `rawKind` не трогает: его меняют явно (`VehicleKindChange`, ответ сервера).
     public func update(from vehicle: Vehicle) {
         kindRaw = vehicle.kind.rawValue
         make = vehicle.make
