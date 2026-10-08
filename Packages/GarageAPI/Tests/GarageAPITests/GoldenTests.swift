@@ -207,6 +207,17 @@ private let goldenCases: [GoldenCase] = [
             id: recordID, vehicleID: vehicleID, date: date("2026-10-01T00:00:00.000Z"), mileageKm: 87_000,
             serviceType: "coolant", laborCostKopecks: 0, notes: "", parts: [])),
     GoldenCase(
+        "maintenance-rule",
+        MaintenanceRuleDTO(
+            id: uuid("88888888-8888-4888-8888-888888888888"), vehicleID: vehicleID, serviceType: "oilChange",
+            period: "months:12", distanceKm: 10_000, startDate: date("2026-10-08T00:00:00.000Z"),
+            startMileageKm: 87_400)),
+    GoldenCase(
+        "maintenance-rule-unknown-period",
+        MaintenanceRuleDTO(
+            id: uuid("88888888-8888-4888-8888-888888888888"), vehicleID: vehicleID, serviceType: "oilChange",
+            period: "weeks:2", startDate: date("2026-10-08T00:00:00.000Z"), startMileageKm: 87_400)),
+    GoldenCase(
         "vehicle-unknown-kind",
         VehicleDTO(id: vehicleID, kind: "tractor", make: "Fendt", model: "Vario", year: 2020, mileageKm: 1_200)),
     GoldenCase(

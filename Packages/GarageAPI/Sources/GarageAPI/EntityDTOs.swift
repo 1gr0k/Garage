@@ -47,6 +47,35 @@ public struct ReceiptRefDTO: Hashable, Sendable, Codable {
     }
 }
 
+/// Правило обслуживания машины. `serviceType` — `ServiceType.storageString` (терпимое чтение, как у записи),
+/// `period` — `"days:<N>"` / `"months:<N>"`; незнакомое значение хранится сырым, разбор в домен — в потребителе.
+/// Отсутствующие необязательные ключи вместо `null`, как у записи.
+///
+/// `EntityKind.maintenanceRule` и `EntityPayload.maintenanceRule` появятся вместе с сервером (этап 12, часть S):
+/// новый вид сущности нельзя добавить, не меняя исчерпывающие `switch` сервера и клиента.
+public struct MaintenanceRuleDTO: Hashable, Sendable, Codable {
+    public var id: UUID
+    public var vehicleID: UUID
+    public var serviceType: String
+    public var period: String?
+    public var distanceKm: Int?
+    public var startDate: Date
+    public var startMileageKm: Int
+
+    public init(
+        id: UUID, vehicleID: UUID, serviceType: String, period: String? = nil, distanceKm: Int? = nil,
+        startDate: Date, startMileageKm: Int
+    ) {
+        self.id = id
+        self.vehicleID = vehicleID
+        self.serviceType = serviceType
+        self.period = period
+        self.distanceKm = distanceKm
+        self.startDate = startDate
+        self.startMileageKm = startMileageKm
+    }
+}
+
 /// Wire representation of a service record. `serviceType` is a `ServiceType.storageString`;
 /// consumers must read unknown values as `.other(<string>)`.
 public struct ServiceRecordDTO: Hashable, Sendable, Codable {
