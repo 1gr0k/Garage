@@ -112,6 +112,8 @@ This is the new Xcode 27 JSON-based project format (JSON with trailing commas), 
 
 ## Definition of done
 
+Checks (`scripts/check.sh`, `swift test`, `xcodebuild test`) are run through the `check-runner` subagent, not in the main session: it keeps the log in `.build/check-logs/` and returns only the summary. Decide by the exit code it reports, not by the wording of the summary.
+
 1. `scripts/check.sh` passes. It runs the `architecture` (layer boundaries from `docs/architecture.md`, `swift format lint --strict`, hook cases), `linux` (package and Server tests), `ios` (GarageStorage tests and `GarageTests` on the simulator, which also builds the app) and `strings` (catalog fully translated) sections; `--only <section>` runs one. Destination comes from `$SIM_DESTINATION` or `CLAUDE.local.md`. New packages are added to the matching section of the script. The `ui` section (UI tests on en and ru) is not part of this run: it is triggered only by `--only ui`.
 2. If `project.xcproj` changed: `xcprojformatter --update` was run and `git diff` of it is minimal.
 3. If the UI changed (`Garage/Features`, `Garage/Shared`, view code in `Garage/App`): `scripts/check.sh --only ui` passes; a new screen or action gets identifiers in `AccessibilityID` and a scenario in `GarageUITests`. ui-checker is only for the visual look of new UI.
