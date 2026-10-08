@@ -148,6 +148,71 @@ stop_case 0 '{"stop_hook_active": true}' 'stop_hook_active prevents a loop'
 printf '%s\n' "$translated" >"$catalog"
 stop_case 0 '{}' 'catalog fully translated'
 
+# --- session-context.sh ---------------------------------------------------------------
+# Хук пишет сводку в stdout, поэтому сверяем stdout (и число строк), а не stderr.
+ctx=$tmp/ctx
+mkdir -p "$ctx/docs/plans"
+git -C "$ctx" init -q -b master
+printf 'a\n' >"$ctx/a.txt"
+printf '# Stage 9\n\n**Статус: выполнен** — PR\n' >"$ctx/docs/plans/stage-9-old.md"
+printf '# Stage 10\n\nin progress\n' >"$ctx/docs/plans/stage-10-new.md"
+git -C "$ctx" add -A
+git -C "$ctx" -c user.name=hooks -c user.email=hooks@example.invalid commit -qm one
+base=$(git -C "$ctx" rev-parse HEAD)
+git -C "$ctx" update-ref refs/remotes/origin/master "$base"
+# Сеть не нужна: удалённый репозиторий недостижим, хук обязан читать только локальные ссылки.
+git -C "$ctx" remote add origin https://invalid.example.invalid/none.git
+
+# context_case <case> <ожидаемая подстрока> <present|absent>
+context_case() {
+    local out
+    out=$(CLAUDE_PROJECT_DIR="$ctx" "$hooks/session-context.sh" </dev/null 2>&1) || {
+        echo "FAIL session-context: $1 (hook exited non-zero)" >&2
+        failures=$((failures + 1))
+        return
+    }
+    if [[ ( "$3" == present && "$out" == *"$2"* ) || ( "$3" == absent && "$out" != *"$2"* ) ]] \
+        && (($(wc -l <<<"$out") <= 10)); then
+        echo "PASS session-context: $1"
+    else
+        echo "FAIL session-context: $1 (wanted $3 \"$2\", at most 10 lines)" >&2
+        sed 's/^/    /' <<<"$out" >&2
+        failures=$((failures + 1))
+    fi
+}
+
+context_case 'branch name' 'Branch: master' present
+context_case 'in sync with origin/master' '0 behind, 0 ahead' present
+context_case 'clean tree' 'Uncommitted: none' present
+# stage-10 по номеру последний; при сортировке по строке им был бы stage-9 (с отметкой) — тест отличает.
+context_case 'latest plan by number is unmarked' 'Plan not marked done: docs/plans/stage-10-new.md' present
+printf 'b\n' >"$ctx/b.txt"
+context_case 'untracked file listed' '  b.txt' present
+for n in 1 2 3 4 5 6 7; do printf 'x\n' >"$ctx/extra$n.txt"; done
+context_case 'many files are collapsed to a count' '… and 3 more' present
+rm -f "$ctx"/extra*.txt "$ctx/b.txt"
+printf '# Stage 10\n\n**Статус: выполнен** — PR\n' >"$ctx/docs/plans/stage-10-new.md"
+context_case 'marked latest plan is silent' 'Plan not marked done' absent
+printf 'c\n' >"$ctx/c.txt"
+git -C "$ctx" add -A
+git -C "$ctx" -c user.name=hooks -c user.email=hooks@example.invalid commit -qm two
+context_case 'ahead of origin/master' '0 behind, 1 ahead' present
+git -C "$ctx" reset -q --hard "$base"
+git -C "$ctx" update-ref refs/remotes/origin/master "$(git -C "$ctx" commit-tree -p "$base" -m remote 'HEAD^{tree}')"
+context_case 'behind and ahead after divergence' '1 behind, 0 ahead' present
+git -C "$ctx" update-ref -d refs/remotes/origin/master
+context_case 'no origin/master ref' 'origin/master: no local ref' present
+
+nogit=$tmp/nogit
+mkdir -p "$nogit"
+out=$(CLAUDE_PROJECT_DIR="$nogit" "$hooks/session-context.sh" </dev/null 2>&1) && rc=0 || rc=$?
+if [[ "$rc" == 0 && -z "$out" ]]; then
+    echo "PASS session-context: not a git repository"
+else
+    echo "FAIL session-context: not a git repository (exit $rc, output: $out)" >&2
+    failures=$((failures + 1))
+fi
+
 if ((failures > 0)); then
     echo "test-hooks.sh: $failures case(s) failed" >&2
     exit 1
