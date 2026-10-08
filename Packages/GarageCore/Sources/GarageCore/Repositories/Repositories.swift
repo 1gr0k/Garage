@@ -4,6 +4,7 @@ import Foundation
 public enum RepositoryError: Error, Hashable, Sendable {
     case vehicleNotFound(UUID)
     case recordNotFound(UUID)
+    case ruleNotFound(UUID)
 }
 
 /// Хранилище записей об обслуживании.

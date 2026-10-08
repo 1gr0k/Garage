@@ -45,6 +45,12 @@ Use case заводится **только если есть правило ил
   удаление токена».
 - `ReceiptImagePreparing` — порт без use case: ViewModel формы вызывает его сам. Так же статус
   синхронизации — прямо `SyncService.status()`.
+- `AddMaintenanceRule` / `UpdateMaintenanceRule` — use case'ы: черновик правила проверяется
+  `MaintenanceRuleDraft.makeRule` (хотя бы один интервал, границы, непустой `.other`), в правке
+  сохраняются `id` и `vehicleID`, «ничего не изменилось → порт не вызывается».
+- `RescheduleReminders` — use case-оркестрация: разрешение → снимок данных → `MaintenanceSchedule.nextReminders`
+  → `ReminderScheduling.replaceAll`. Без разрешения порт не вызывается.
+- `MaintenanceRuleRepository.delete` — порт без use case (как удаление записи).
 
 Use case — `struct` с зависимостями через `init` и одним именованным методом (`execute`), `Sendable`,
 методы `async throws`. Протоколы портов — в `GarageCore/Repositories`, `Sendable`. Ошибки, на которые
@@ -185,6 +191,20 @@ ViewModel (`makeServiceRecordFormViewModel(vehicleID:currentMileageKm:)`) и о�
   побеждает»): push даёт `rejected/vehicleNotFound`, движок удаляет запись локально, pull приносит
   tombstone машины. Демо-машины с фиксированными UUID по той же причине не воскресают на новом
   устройстве (`conflict/deleted`).
+
+## Напоминания о ТО
+
+План: `docs/plans/stage-12-reminders.md`. Часть A (GarageCore, контракт, терпимое чтение) реализована;
+хранилище, уведомления и UI — части S и B.
+
+- Домен: `MaintenanceRule` (тип работ, `ServicePeriod` в днях/месяцах, интервал по пробегу, `MaintenanceStart`).
+  Срок — чистая функция `MaintenanceSchedule.due(for:records:currentMileageKm:today:calendar:)`: базис — последняя
+  запись того же типа у той же машины (сопоставление по `ServiceType.matchKey`), иначе старт правила;
+  статус — худший из даты и пробега. Всё в GarageCore и тестируется на Linux.
+- Уведомления: порт `ReminderScheduling` получает **смысл** (`ScheduledReminder`), а не текст — в GarageCore
+  пользовательских строк нет; текст соберёт адаптер приложения из каталога. Окно (60 ближайших из 64 лимита iOS)
+  режет `MaintenanceSchedule.nextReminders`, а не система.
+- Терпимое чтение контракта и когда расти `schemaVersion` — `docs/api.md`, «Правила эволюции контракта».
 
 ## Что проверяет `scripts/check.sh --only architecture`
 

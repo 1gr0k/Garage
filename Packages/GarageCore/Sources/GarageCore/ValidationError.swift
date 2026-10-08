@@ -12,4 +12,12 @@ public enum ValidationError: Error, Hashable, Sendable {
     case amountTooLarge(Money)
     case emptyServiceTypeDescription
     case invalidAmount(String)
+    // Правила обслуживания.
+    /// У правила нет ни интервала по времени, ни по пробегу.
+    case noInterval
+    /// Значение интервала по времени вне границ (`ServicePeriod.daysRange` / `monthsRange`).
+    case periodOutOfRange(Int)
+    /// Интервал по пробегу вне `1...ServiceRecord.maxMileageKm`.
+    case distanceOutOfRange(Int)
+    case unknownPeriod(String)
 }

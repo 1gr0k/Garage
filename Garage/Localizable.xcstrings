@@ -235,6 +235,46 @@
         }
       }
     },
+    "Choose a time or mileage interval" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выберите интервал по времени или по пробегу"
+          }
+        }
+      }
+    },
+    "Distance must be from 1 to %@" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пробег должен быть от 1 до %@"
+          }
+        }
+      }
+    },
+    "Interval is out of range" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Интервал вне допустимых пределов"
+          }
+        }
+      }
+    },
+    "Unknown interval" : {
+      "localizations" : {
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Неизвестный интервал"
+          }
+        }
+      }
+    },
     "Enter a valid amount" : {
       "localizations" : {
         "ru" : {

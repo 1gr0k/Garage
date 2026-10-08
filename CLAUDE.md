@@ -59,7 +59,7 @@ GarageStorage → GarageSync → GarageAPI, GarageCore      (port implementation
 GarageCore: domain + use cases + port protocols (Foundation only)
 ```
 
-- A use case exists only where there is a rule or orchestration (`AddServiceRecord`, `UpdateServiceRecord`, `RegisterDevice`, `SyncNow`, `ForgetDevice`); otherwise the ViewModel depends on the port directly (`ReceiptImagePreparing`, `SyncService.status()`, deleting a record via `ServiceRecordEditing.delete`).
+- A use case exists only where there is a rule or orchestration (`AddServiceRecord`, `UpdateServiceRecord`, `RegisterDevice`, `SyncNow`, `ForgetDevice`, `AddMaintenanceRule`, `UpdateMaintenanceRule`, `RescheduleReminders`); otherwise the ViewModel depends on the port directly (`ReceiptImagePreparing`, `SyncService.status()`, deleting a record via `ServiceRecordEditing.delete`, deleting a rule via `MaintenanceRuleRepository.delete`).
 - Views are thin: `@Query` + `DisplayMapping` (`validVehicles()` / `validRecords()`) for display only; every write goes View → ViewModel → use case/port. ViewModels don't import SwiftData/GarageStorage/GarageSync/GarageAPI.
 
 - **`Packages/GarageCore`** — local SwiftPM package holding the model/domain layer (`Vehicle`, sample data), use cases (`UseCases/`) and port protocols (`Repositories/`). Platform-independent (iOS 18 / macOS 15), so its logic is testable with plain `swift test`. Types consumed by the app must be `public`.

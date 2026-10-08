@@ -136,4 +136,79 @@ final class FakeSyncService: SyncService, @unchecked Sendable {
     }
 }
 
+final class FakeRuleRepository: MaintenanceRuleRepository, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _added: [MaintenanceRule] = []
+    private var _updated: [MaintenanceRule] = []
+    private var _deleted: [UUID] = []
+    var error: (any Error)?
+
+    var added: [MaintenanceRule] { lock.withLock { _added } }
+    var updated: [MaintenanceRule] { lock.withLock { _updated } }
+    var deleted: [UUID] { lock.withLock { _deleted } }
+
+    func add(_ rule: MaintenanceRule) async throws {
+        if let error { throw error }
+        lock.withLock { _added.append(rule) }
+    }
+
+    func update(_ rule: MaintenanceRule) async throws {
+        if let error { throw error }
+        lock.withLock { _updated.append(rule) }
+    }
+
+    func delete(id: MaintenanceRule.ID) async throws {
+        if let error { throw error }
+        lock.withLock { _deleted.append(id) }
+    }
+}
+
+final class FakeSnapshotReader: MaintenanceSnapshotReading, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _readCount = 0
+    var data = MaintenanceSnapshot()
+    var error: (any Error)?
+
+    var readCount: Int { lock.withLock { _readCount } }
+
+    func snapshot() async throws -> MaintenanceSnapshot {
+        lock.withLock { _readCount += 1 }
+        if let error { throw error }
+        return data
+    }
+}
+
+final class FakeReminderScheduler: ReminderScheduling, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _replaced: [[ScheduledReminder]] = []
+    private var _requestCount = 0
+    private var _status: ReminderAuthorization
+    let statusAfterRequest: ReminderAuthorization
+    var error: (any Error)?
+
+    init(status: ReminderAuthorization = .authorized, statusAfterRequest: ReminderAuthorization = .authorized) {
+        _status = status
+        self.statusAfterRequest = statusAfterRequest
+    }
+
+    var status: ReminderAuthorization { lock.withLock { _status } }
+    var replaced: [[ScheduledReminder]] { lock.withLock { _replaced } }
+    var requestCount: Int { lock.withLock { _requestCount } }
+
+    func authorization() async -> ReminderAuthorization { status }
+
+    func requestAuthorization() async -> ReminderAuthorization {
+        lock.withLock {
+            _requestCount += 1
+            if _status == .notDetermined { _status = statusAfterRequest }
+            return _status
+        }
+    }
+
+    func replaceAll(with reminders: [ScheduledReminder]) async throws {
+        if let error { throw error }
+        lock.withLock { _replaced.append(reminders) }
+    }
+}
+
 struct TestFailure: Error {}

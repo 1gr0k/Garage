@@ -9,6 +9,11 @@ struct GoldenCase: Sendable, CustomTestStringConvertible {
 
     var testDescription: String { name }
 
+    init(name: String, check: @escaping @Sendable (Data) throws -> Void) {
+        self.name = name
+        self.check = check
+    }
+
     init<T: Codable & Equatable & Sendable>(_ name: String, _ expected: T) {
         self.name = name
         self.check = { data in
@@ -18,6 +23,17 @@ struct GoldenCase: Sendable, CustomTestStringConvertible {
             #expect(
                 try JSONValue(data: encoded) == JSONValue(data: data),
                 "encode(expected) != golden for \(name)")
+        }
+    }
+}
+
+extension GoldenCase {
+    /// Пример, у которого круговой проход невозможен (пропущенные элементы): только декодирование,
+    /// ожидаемое значение задаёт тест, а JSON берётся из `docs/api.md`.
+    init<T: Decodable & Equatable & Sendable>(decodeOnly name: String, _ expected: T) {
+        self.init(name: name) { data in
+            let decoded = try APICoding.makeDecoder().decode(T.self, from: data)
+            #expect(decoded == expected, "decode(golden) != expected for \(name)")
         }
     }
 }
@@ -132,6 +148,79 @@ private let goldenCases: [GoldenCase] = [
                         message: "Vehicle 99999999-9999-4999-8999-999999999999 does not exist"))),
         ])),
     GoldenCase(
+        decodeOnly: "pull-response-unknown-entity",
+        PullResponse(
+            changes: [
+                ServerChange(
+                    version: 41, modifiedAt: date("2026-10-07T09:30:00.000Z"),
+                    operation: .upsert(.vehicle(landCruiser))),
+                ServerChange(
+                    version: 43, modifiedAt: date("2026-10-07T09:32:00.000Z"),
+                    operation: .delete(.serviceRecord, id: uuid("33333333-3333-4333-8333-333333333333"))),
+            ],
+            cursor: "43", hasMore: false, skipped: ["entity:futureEntity"])),
+    GoldenCase(
+        decodeOnly: "pull-response-unknown-op",
+        PullResponse(
+            changes: [
+                ServerChange(
+                    version: 41, modifiedAt: date("2026-10-07T09:30:00.000Z"),
+                    operation: .upsert(.vehicle(landCruiser))),
+                ServerChange(
+                    version: 43, modifiedAt: date("2026-10-07T09:32:00.000Z"),
+                    operation: .delete(.serviceRecord, id: uuid("33333333-3333-4333-8333-333333333333"))),
+            ],
+            cursor: "43", hasMore: false, skipped: ["op:patch"])),
+    GoldenCase(
+        decodeOnly: "push-response-unknown-status",
+        PushResponse(results: [
+            PushResult(changeID: uuid("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"), outcome: .applied(version: 44)),
+            PushResult(
+                changeID: uuid("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"), outcome: .unrecognized(status: "postponed")),
+            PushResult(
+                changeID: uuid("cccccccc-cccc-4ccc-8ccc-cccccccccccc"),
+                outcome: .unrecognized(status: "conflict/entity:futureEntity")),
+            PushResult(changeID: uuid("dddddddd-dddd-4ddd-8ddd-dddddddddddd"), outcome: .applied(version: 46)),
+        ])),
+    GoldenCase(
+        "push-response-unknown-conflict-reason",
+        PushResponse(results: [
+            PushResult(
+                changeID: uuid("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"),
+                outcome: .conflict(
+                    reason: .unknown("locked"),
+                    current: ServerChange(
+                        version: 45, modifiedAt: date("2026-10-07T09:45:00.000Z"),
+                        operation: .upsert(
+                            .serviceRecord(oilChange(laborCostKopecks: 350_000, notes: "Заменено масло"))))))
+        ])),
+    GoldenCase(
+        "push-response-unknown-error-code",
+        PushResponse(results: [
+            PushResult(
+                changeID: uuid("dddddddd-dddd-4ddd-8ddd-dddddddddddd"),
+                outcome: .rejected(APIError(code: .unknown("teapot"), message: "I am a teapot")))
+        ])),
+    GoldenCase(
+        "service-record-unknown-service-type",
+        ServiceRecordDTO(
+            id: recordID, vehicleID: vehicleID, date: date("2026-10-01T00:00:00.000Z"), mileageKm: 87_000,
+            serviceType: "coolant", laborCostKopecks: 0, notes: "", parts: [])),
+    GoldenCase(
+        "maintenance-rule",
+        MaintenanceRuleDTO(
+            id: uuid("88888888-8888-4888-8888-888888888888"), vehicleID: vehicleID, serviceType: "oilChange",
+            period: "months:12", distanceKm: 10_000, startDate: date("2026-10-08T00:00:00.000Z"),
+            startMileageKm: 87_400)),
+    GoldenCase(
+        "maintenance-rule-unknown-period",
+        MaintenanceRuleDTO(
+            id: uuid("88888888-8888-4888-8888-888888888888"), vehicleID: vehicleID, serviceType: "oilChange",
+            period: "weeks:2", startDate: date("2026-10-08T00:00:00.000Z"), startMileageKm: 87_400)),
+    GoldenCase(
+        "vehicle-unknown-kind",
+        VehicleDTO(id: vehicleID, kind: "tractor", make: "Fendt", model: "Vario", year: 2020, mileageKm: 1_200)),
+    GoldenCase(
         "error-response",
         APIErrorResponse(
             error: APIError(
@@ -194,27 +283,112 @@ private let goldenCases: [GoldenCase] = [
         }
     }
 
-    @Test func unknownOpFails() {
-        #expect(throws: DecodingError.self) {
-            try decode(
-                ServerChange.self,
-                #"{"version":1,"modifiedAt":"2026-10-07T09:30:00Z","op":"merge","entity":"vehicle","id":"11111111-1111-4111-8111-111111111111"}"#
-            )
+    private func pullJSON(_ changes: String) -> String {
+        #"{"changes":[\#(changes)],"cursor":"9","hasMore":false}"#
+    }
+
+    private static let knownDelete =
+        #"{"version":1,"modifiedAt":"2026-10-07T09:30:00Z","op":"delete","entity":"vehicle","id":"11111111-1111-4111-8111-111111111111"}"#
+    private static let knownDelete2 =
+        #"{"version":4,"modifiedAt":"2026-10-07T09:30:00Z","op":"delete","entity":"serviceRecord","id":"33333333-3333-4333-8333-333333333333"}"#
+
+    @Test func unknownEntityAndOpAreSkippedBetweenKnownChanges() throws {
+        let unknownEntity =
+            #"{"version":2,"modifiedAt":"2026-10-07T09:30:00Z","op":"delete","entity":"part","id":"11111111-1111-4111-8111-111111111111"}"#
+        let unknownOp =
+            #"{"version":3,"modifiedAt":"2026-10-07T09:30:00Z","op":"patch","entity":"vehicle","id":"11111111-1111-4111-8111-111111111111"}"#
+        let response = try decode(
+            PullResponse.self,
+            pullJSON([Self.knownDelete, unknownEntity, unknownOp, Self.knownDelete2].joined(separator: ",")))
+        #expect(response.changes.map(\.version) == [1, 4])
+        #expect(response.skipped == ["entity:part", "op:patch"])
+        #expect(response.cursor == "9")
+    }
+
+    @Test func nothingSkippedMeansEmptySkipped() throws {
+        let response = try decode(PullResponse.self, pullJSON(Self.knownDelete))
+        #expect(response.skipped.isEmpty)
+    }
+
+    @Test func skippedIsNotPartOfTheWireFormat() throws {
+        let response = PullResponse(changes: [], cursor: "1", hasMore: false, skipped: ["entity:futureEntity"])
+        let text = String(decoding: try APICoding.makeEncoder().encode(response), as: UTF8.self)
+        #expect(!text.contains("skipped"))
+    }
+
+    /// Положительный контроль строгости: терпимость только к незнакомому значению, не к нарушению формата.
+    @Test func malformedElementsStillFailTheWholePullResponse() {
+        let knownWithoutData =
+            #"{"version":2,"modifiedAt":"2026-10-07T09:30:00Z","op":"upsert","entity":"vehicle"}"#
+        let badDate =
+            #"{"version":2,"modifiedAt":"yesterday","op":"delete","entity":"vehicle","id":"11111111-1111-4111-8111-111111111111"}"#
+        let badID =
+            #"{"version":2,"modifiedAt":"2026-10-07T09:30:00Z","op":"delete","entity":"vehicle","id":"not-a-uuid"}"#
+        for broken in [knownWithoutData, badDate, badID] {
+            #expect(throws: DecodingError.self, "\(broken)") {
+                try decode(PullResponse.self, pullJSON([Self.knownDelete, broken].joined(separator: ",")))
+            }
         }
     }
 
-    @Test func unknownEntityFails() {
-        #expect(throws: DecodingError.self) {
-            try decode(
-                ServerChange.self,
-                #"{"version":1,"modifiedAt":"2026-10-07T09:30:00Z","op":"delete","entity":"part","id":"11111111-1111-4111-8111-111111111111"}"#
-            )
+    /// Сервер строг к входящему: незнакомые `entity`/`op` в push-запросе — ошибка запроса, не пропуск.
+    @Test func unknownEntityOrOpInPushRequestFails() {
+        for (entity, op) in [("part", "delete"), ("vehicle", "merge")] {
+            #expect(throws: DecodingError.self, "\(entity)/\(op)") {
+                try decode(
+                    PushChange.self,
+                    #"{"changeID":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","modifiedAt":"2026-10-07T09:30:00Z","op":"\#(op)","entity":"\#(entity)","id":"11111111-1111-4111-8111-111111111111"}"#
+                )
+            }
         }
     }
 
-    @Test func unknownPushStatusFails() {
+    @Test func strictErrorPointsAtTheOffendingKey() {
+        func failingKey(entity: String, op: String) -> String? {
+            do {
+                _ = try decode(
+                    PushChange.self,
+                    #"{"changeID":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","modifiedAt":"2026-10-07T09:30:00Z","op":"\#(op)","entity":"\#(entity)","id":"11111111-1111-4111-8111-111111111111"}"#
+                )
+                return nil
+            } catch let DecodingError.dataCorrupted(context) {
+                return context.codingPath.last?.stringValue
+            } catch {
+                return nil
+            }
+        }
+        #expect(failingKey(entity: "part", op: "delete") == "entity")
+        #expect(failingKey(entity: "vehicle", op: "merge") == "op")
+    }
+
+    @Test func unknownPushStatusBecomesUnrecognized() throws {
+        let response = try decode(
+            PushResponse.self,
+            #"{"results":[{"changeID":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","status":"postponed"},{"changeID":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","status":"applied","version":7}]}"#
+        )
+        #expect(response.results.map(\.outcome) == [.unrecognized(status: "postponed"), .applied(version: 7)])
+        let encoded = String(decoding: try APICoding.makeEncoder().encode(response.results[0]), as: UTF8.self)
+        #expect(encoded.contains(#""status":"postponed""#))
+    }
+
+    @Test func conflictWithUnrecognizedCurrentBecomesUnrecognized() throws {
+        let response = try decode(
+            PushResponse.self,
+            #"{"results":[{"changeID":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","status":"conflict","reason":"versionMismatch","current":{"version":2,"modifiedAt":"2026-10-07T09:30:00Z","op":"delete","entity":"part","id":"11111111-1111-4111-8111-111111111111"}},{"changeID":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","status":"conflict","reason":"deleted","current":{"version":3,"modifiedAt":"2026-10-07T09:30:00Z","op":"merge","entity":"vehicle","id":"11111111-1111-4111-8111-111111111111"}},{"changeID":"cccccccc-cccc-4ccc-8ccc-cccccccccccc","status":"applied","version":7}]}"#
+        )
+        #expect(
+            response.results.map(\.outcome) == [
+                .unrecognized(status: "conflict/entity:part"), .unrecognized(status: "conflict/op:merge"),
+                .applied(version: 7),
+            ])
+    }
+
+    @Test func conflictWithMalformedCurrentStillFails() {
         #expect(throws: DecodingError.self) {
-            try decode(PushResult.self, #"{"changeID":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","status":"postponed"}"#)
+            try decode(
+                PushResponse.self,
+                #"{"results":[{"changeID":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","status":"conflict","reason":"versionMismatch","current":{"version":2,"modifiedAt":"2026-10-07T09:30:00Z","op":"upsert","entity":"vehicle"}}]}"#
+            )
         }
     }
 
