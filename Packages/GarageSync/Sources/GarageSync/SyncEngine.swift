@@ -14,6 +14,12 @@ public struct SyncReport: Sendable {
     public var stillPending: [PendingChange] = []
     /// Receipt uploads or downloads that failed; the affected edits/records are retried on the next sync.
     public var receiptFailures: [(sha256: String, error: any Error)] = []
+    /// Элементы pull, пропущенные как незнакомые (`"entity:futureEntity"`, `"op:patch"`): терпимое чтение
+    /// контракта, не ошибка. Курсор идёт дальше.
+    public var skippedUnrecognized: [String] = []
+    /// Изменения, на которые сервер ответил незнакомым исходом (`PushOutcome.unrecognized`). Они остались в
+    /// очереди и уйдут снова на следующей синхронизации (повтор идемпотентен по `changeID`).
+    public var unrecognizedOutcomes: [(ref: EntityRef, status: String)] = []
 
     public init() {}
 }
@@ -71,12 +77,15 @@ public actor SyncEngine {
     /// Receipt hashes the server has (or just got) in the current run.
     private var uploadedReceipts: Set<String> = []
     private var failedReceipts: Set<String> = []
+    /// Изменения, на которые сервер в этом прогоне ответил незнакомым исходом: в следующих раундах их не шлём.
+    private var unrecognizedChanges: Set<UUID> = []
 
     private func run() async throws -> SyncReport {
         var report = SyncReport()
         rejectedVehicles = []
         uploadedReceipts = []
         failedReceipts = []
+        unrecognizedChanges = []
         try await push(&report)
         try Task.checkCancellation()
         try await pull(&report)
@@ -94,7 +103,8 @@ public actor SyncEngine {
             try Task.checkCancellation()
             let queued = try await store.pendingChanges()
             guard !queued.isEmpty else { return }
-            let pending = try await uploadReceipts(for: queued, report: &report)
+            let pending = try await uploadReceipts(
+                for: queued.filter { !unrecognizedChanges.contains($0.changeID) }, report: &report)
             if pending.count < queued.count { held = true }
             guard !pending.isEmpty else {
                 settled = true
@@ -117,7 +127,7 @@ public actor SyncEngine {
                 break
             }
         }
-        if held || !settled { report.stillPending = try await store.pendingChanges() }
+        if held || !settled || !unrecognizedChanges.isEmpty { report.stillPending = try await store.pendingChanges() }
     }
 
     /// Uploads the receipt blobs the batch refers to (the server rejects a record whose blob is missing).
@@ -238,6 +248,12 @@ public actor SyncEngine {
                 try await store.discard(changeID: change.changeID)
             }
             return false
+
+        case .unrecognized(let status):
+            // Безопасный вариант: правка пользователя не теряется, повтор идемпотентен по `changeID`.
+            unrecognizedChanges.insert(change.changeID)
+            report.unrecognizedOutcomes.append((ref, status))
+            return false
         }
     }
 
@@ -276,6 +292,7 @@ public actor SyncEngine {
                 cursor = nil
                 continue
             }
+            report.skippedUnrecognized += page.skipped
             for change in page.changes {
                 try await applyPulled(change, report: &report)
             }

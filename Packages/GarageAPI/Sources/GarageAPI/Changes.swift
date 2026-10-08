@@ -1,8 +1,37 @@
 import Foundation
 
-public enum EntityKind: String, Hashable, Sendable, Codable {
+/// Виды сущностей, которые клиент понимает. `CaseIterable` нужен тесту-растяжке, который привязывает набор
+/// к `GarageStore.schemaVersion` (docs/api.md, «Правила эволюции контракта»).
+public enum EntityKind: String, Hashable, Sendable, Codable, CaseIterable {
     case vehicle
     case serviceRecord
+}
+
+/// Изменение с сервера, у которого `entity` или `op` клиенту незнакомы. Это не нарушение формата:
+/// терпимый читатель пропускает элемент (`PullResponse.skipped`) или оставляет изменение в очереди
+/// (`PushOutcome.unrecognized`).
+public struct UnrecognizedChange: Error, Hashable, Sendable, CustomStringConvertible {
+    /// `"entity:<значение>"` или `"op:<значение>"` — только имена, без данных.
+    public var description: String
+
+    public init(_ description: String) {
+        self.description = description
+    }
+}
+
+/// Элемент массива: либо значение, либо описание пропущенного незнакомого. Любая другая ошибка декодирования
+/// по-прежнему валит весь массив.
+private enum Tolerant<Element: Decodable>: Decodable {
+    case element(Element)
+    case skipped(String)
+
+    init(from decoder: any Decoder) throws {
+        do {
+            self = .element(try Element(from: decoder))
+        } catch let unrecognized as UnrecognizedChange {
+            self = .skipped(unrecognized.description)
+        }
+    }
 }
 
 /// Full state of a synced entity (upsert never carries a patch).
@@ -54,12 +83,12 @@ extension ChangeOperation {
         }
     }
 
-    fileprivate init(from container: KeyedDecodingContainer<ChangeKeys>) throws {
+    /// Бросает `UnrecognizedChange` на незнакомых `entity` и `op`; остальные ошибки — `DecodingError`.
+    fileprivate init(tolerantFrom container: KeyedDecodingContainer<ChangeKeys>) throws {
         let op = try container.decode(String.self, forKey: .op)
         let entityString = try container.decode(String.self, forKey: .entity)
         guard let kind = EntityKind(rawValue: entityString) else {
-            throw DecodingError.dataCorruptedError(
-                forKey: .entity, in: container, debugDescription: "Unknown entity \"\(entityString)\"")
+            throw UnrecognizedChange("entity:\(entityString)")
         }
         switch op {
         case "upsert":
@@ -72,15 +101,24 @@ extension ChangeOperation {
         case "delete":
             self = .delete(kind, id: try container.decode(UUID.self, forKey: .id))
         default:
+            throw UnrecognizedChange("op:\(op)")
+        }
+    }
+
+    /// Для входящих запросов сервера: незнакомое значение — ошибка запроса (`400`), а не пропуск.
+    fileprivate init(strictFrom container: KeyedDecodingContainer<ChangeKeys>) throws {
+        do {
+            try self.init(tolerantFrom: container)
+        } catch let unrecognized as UnrecognizedChange {
             throw DecodingError.dataCorruptedError(
-                forKey: .op, in: container, debugDescription: "Unknown op \"\(op)\"")
+                forKey: .op, in: container, debugDescription: "Unknown \(unrecognized.description)")
         }
     }
 }
 
 extension ChangeOperation: Codable {
     public init(from decoder: any Decoder) throws {
-        try self.init(from: try decoder.container(keyedBy: ChangeKeys.self))
+        try self.init(strictFrom: try decoder.container(keyedBy: ChangeKeys.self))
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -90,6 +128,8 @@ extension ChangeOperation: Codable {
 }
 
 /// A change as stored on the server: its version, the device edit time and the operation.
+/// Декодер терпимый: на незнакомые `entity`/`op` бросает `UnrecognizedChange`, который перехватывают
+/// `PullResponse` и `PushResult`; сам по себе `ServerChange` вне этих ответов так не декодируют.
 public struct ServerChange: Hashable, Sendable, Codable {
     public var version: Int64
     public var modifiedAt: Date
@@ -105,7 +145,7 @@ public struct ServerChange: Hashable, Sendable, Codable {
         let container = try decoder.container(keyedBy: ChangeKeys.self)
         version = try container.decode(Int64.self, forKey: .version)
         modifiedAt = try container.decode(Date.self, forKey: .modifiedAt)
-        operation = try ChangeOperation(from: container)
+        operation = try ChangeOperation(tolerantFrom: container)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -121,11 +161,42 @@ public struct PullResponse: Hashable, Sendable, Codable {
     public var changes: [ServerChange]
     public var cursor: String
     public var hasMore: Bool
+    /// Элементы `changes`, которые клиент пропустил как незнакомые (`"entity:futureEntity"`, `"op:patch"`),
+    /// в порядке прихода. Только при чтении: на проводе этого поля нет.
+    public var skipped: [String]
 
-    public init(changes: [ServerChange], cursor: String, hasMore: Bool) {
+    public init(changes: [ServerChange], cursor: String, hasMore: Bool, skipped: [String] = []) {
         self.changes = changes
         self.cursor = cursor
         self.hasMore = hasMore
+        self.skipped = skipped
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case changes, cursor, hasMore
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        var changes: [ServerChange] = []
+        var skipped: [String] = []
+        for item in try container.decode([Tolerant<ServerChange>].self, forKey: .changes) {
+            switch item {
+            case .element(let change): changes.append(change)
+            case .skipped(let name): skipped.append(name)
+            }
+        }
+        self.changes = changes
+        self.skipped = skipped
+        cursor = try container.decode(String.self, forKey: .cursor)
+        hasMore = try container.decode(Bool.self, forKey: .hasMore)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(changes, forKey: .changes)
+        try container.encode(cursor, forKey: .cursor)
+        try container.encode(hasMore, forKey: .hasMore)
     }
 }
 
@@ -148,7 +219,7 @@ public struct PushChange: Hashable, Sendable, Codable {
         changeID = try container.decode(UUID.self, forKey: .changeID)
         baseVersion = try container.decodeIfPresent(Int64.self, forKey: .baseVersion)
         modifiedAt = try container.decode(Date.self, forKey: .modifiedAt)
-        operation = try ChangeOperation(from: container)
+        operation = try ChangeOperation(strictFrom: container)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -212,6 +283,10 @@ public enum PushOutcome: Hashable, Sendable {
     case applied(version: Int64)
     case conflict(reason: ConflictReason, current: ServerChange)
     case rejected(APIError)
+    /// Исход, который клиент не понимает: незнакомый `status` или `conflict`, чей `current` — незнакомый
+    /// вид/`op`. Клиент оставляет изменение в очереди (повтор идемпотентен по `changeID`).
+    /// Для `conflict` с незнакомым `current` в `status` — `"conflict/<entity:…|op:…>"`.
+    case unrecognized(status: String)
 }
 
 /// Result of one pushed item, correlated by `changeID`.
@@ -236,14 +311,16 @@ public struct PushResult: Hashable, Sendable, Codable {
         case "applied":
             outcome = .applied(version: try container.decode(Int64.self, forKey: .version))
         case "conflict":
-            outcome = .conflict(
-                reason: try container.decode(ConflictReason.self, forKey: .reason),
-                current: try container.decode(ServerChange.self, forKey: .current))
+            let reason = try container.decode(ConflictReason.self, forKey: .reason)
+            do {
+                outcome = .conflict(reason: reason, current: try container.decode(ServerChange.self, forKey: .current))
+            } catch let unrecognized as UnrecognizedChange {
+                outcome = .unrecognized(status: "conflict/\(unrecognized.description)")
+            }
         case "rejected":
             outcome = .rejected(try container.decode(APIError.self, forKey: .error))
         default:
-            throw DecodingError.dataCorruptedError(
-                forKey: .status, in: container, debugDescription: "Unknown status \"\(status)\"")
+            outcome = .unrecognized(status: status)
         }
     }
 
@@ -261,6 +338,8 @@ public struct PushResult: Hashable, Sendable, Codable {
         case .rejected(let error):
             try container.encode("rejected", forKey: .status)
             try container.encode(error, forKey: .error)
+        case .unrecognized(let status):
+            try container.encode(status, forKey: .status)
         }
     }
 }
