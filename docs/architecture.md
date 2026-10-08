@@ -85,10 +85,25 @@ ViewModel (`makeServiceRecordFormViewModel(vehicleID:currentMileageKm:)`) и о�
 | use case | `Packages/GarageCore/Tests/GarageCoreTests/UseCases/` (`swift test`) | `…/UseCases/Fakes.swift` — фейки портов |
 | адаптер | `Packages/GarageStorage/Tests/GarageStorageTests/AdapterTests.swift` (in-memory контейнер, `xcodebuild test`) | `FakeSyncServer.swift` |
 | ViewModel | `GarageTests/` (Swift Testing, хост `Garage.app`) | `GarageTests/Fakes.swift` — фейки портов из GarageCore |
-| вью | ui-checker в симуляторе | — |
+| вью | `GarageUITests/` (XCUITest, регрессия на en и ru: `scripts/check.sh --only ui`); ui-checker — только визуальная проверка (обрезанные строки, вёрстка, новый экран до UI-тестов) | тестовый режим запуска (ниже) |
 
 Фейки реализуют протоколы из `GarageCore`, поэтому ни тесты use case'ов, ни тесты ViewModel не
 трогают SwiftData и сеть.
+
+### Тестовый режим запуска (UI-тесты)
+
+Аргумент `-GarageUITesting` (только Debug) переключает `GarageApp` на
+`AppDependencies.bootstrapForUITesting()` (`Garage/App/AppDependencies+UITesting.swift`): SwiftData в
+памяти, изолированный `UserDefaults` (`Garage.UITests`), свежий сид и фикстура записей через обычный
+порт записи, синхронизация выключена (`InMemoryCredentialsStore` вместо Keychain,
+`DisabledDeviceRegistrar` без сети). Подмена живёт только в composition root: слои и вью про режим не
+знают, в Release кода режима нет.
+
+Идентификаторы доступности (`AccessibilityID`) и описание фикстуры (`UITestFixture`) лежат в общей
+синхронизируемой папке `GarageUIIdentifiers/`, которая входит и в `Garage`, и в `GarageUITests`:
+вью и тесты компилируют одни и те же строки. Тесты находят элементы только по идентификаторам, не по
+тексту и не по индексам; тексты из каталога проверяет лишь `LocalizedTextTests`. В папке допустимы
+только `Foundation` и `GarageCore`.
 
 ## Пример: «Добавить запись»
 
@@ -179,6 +194,8 @@ ViewModel (`makeServiceRecordFormViewModel(vehicleID:currentMileageKm:)`) и о�
   `GarageAPI`, `modelContext`, `.insert(`, `ModelContext(`, `context.save()`, `ServiceLog`, `VehicleLog`,
   `SyncQueue`, `SyncEngine`, `SyncSupport`;
 - `*ViewModel.swift`: нет `import SwiftData`/`GarageStorage`/`GarageSync`/`GarageAPI`;
+- `GarageUIIdentifiers/*.swift`: нет `import SwiftUI`/`UIKit`/`XCTest`/`SwiftData`/`GarageStorage`/
+  `GarageSync`/`GarageAPI`;
 - `import GarageSync` в приложении — только в `Garage/App/`;
 - `Packages/GarageCore/Sources`: единственный импорт — `Foundation`;
 - `swift format lint --strict` по исходникам, тестам и манифестам (`.swift-format` в корне);

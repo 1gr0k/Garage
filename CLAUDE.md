@@ -36,6 +36,13 @@ xcodebuild -project Garage.xcodeproj -list
 # Definition of done / one section (fast first: layer boundaries, swift-format lint, hook cases)
 scripts/check.sh
 scripts/check.sh --only architecture
+
+# UI tests (XCUITest, en and ru on two simulators `Garage UI en/ru`, created on first run; not part of the default run)
+scripts/check.sh --only ui              # UI_SERIAL=1 runs the languages one after another on a busy machine
+# one UI test: run by scheme, not -xctestrun (it ignores -testLanguage), after build-for-testing into .build/ui
+TEST_RUNNER_GARAGE_EXPECTED_LANGUAGE=en xcodebuild test-without-building -project Garage.xcodeproj -scheme GarageUITests \
+  -derivedDataPath .build/ui -destination 'id=<udid of Garage UI en>' -testLanguage en -testRegion US \
+  -only-testing:GarageUITests/VehicleTests/testAddVehicleShowsErrorsThenSaves
 scripts/test-hooks.sh   # hook cases only (also run by the architecture section)
 ```
 
@@ -62,6 +69,7 @@ GarageCore: domain + use cases + port protocols (Foundation only)
 - **`Garage/`** — the SwiftUI iOS app target: `App/` (composition root, `LaunchModel`, `RootView`, Keychain), `Features/<Feature>/` (View + ViewModel), `Shared/`. It's a *synchronized folder*: every file inside is automatically a member of the `Garage` target, so adding a Swift file needs no project-file edit. The app target builds with `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` and Swift 6 strict concurrency; the package does not set default MainActor isolation.
 
 - **`GarageTests/`** — unit-test target for ViewModels and launch (Swift Testing, `@testable import Garage`, fakes of GarageCore ports in `Fakes.swift`), also a synchronized folder; see `docs/xcproj-notes.md` for the target format.
+- **`GarageUITests/`** — XCUITest target (XCTest: Swift Testing is unavailable in a UI-test bundle) with the regression scenarios, run on en and ru. **`GarageUIIdentifiers/`** — a synchronized folder shared by `Garage` and `GarageUITests`: `AccessibilityID` (identifiers used by views and tests; tests find elements only by identifier) and `UITestFixture` (`#if DEBUG`; launch argument `-GarageUITesting` and the fixture description). Test mode (in-memory store, fixture, sync off) lives only in `Garage/App/AppDependencies+UITesting.swift`, Debug only.
 
 Put non-UI logic in `GarageCore` and keep the app target thin.
 
@@ -103,5 +111,6 @@ This is the new Xcode 27 JSON-based project format (JSON with trailing commas), 
 
 ## Definition of done
 
-1. `scripts/check.sh` passes. It runs the `architecture` (layer boundaries from `docs/architecture.md`, `swift format lint --strict`, hook cases), `linux` (package and Server tests), `ios` (GarageStorage tests and `GarageTests` on the simulator, which also builds the app) and `strings` (catalog fully translated) sections; `--only <section>` runs one. Destination comes from `$SIM_DESTINATION` or `CLAUDE.local.md`. New packages are added to the matching section of the script.
+1. `scripts/check.sh` passes. It runs the `architecture` (layer boundaries from `docs/architecture.md`, `swift format lint --strict`, hook cases), `linux` (package and Server tests), `ios` (GarageStorage tests and `GarageTests` on the simulator, which also builds the app) and `strings` (catalog fully translated) sections; `--only <section>` runs one. Destination comes from `$SIM_DESTINATION` or `CLAUDE.local.md`. New packages are added to the matching section of the script. The `ui` section (UI tests on en and ru) is not part of this run: it is triggered only by `--only ui`.
 2. If `project.xcproj` changed: `xcprojformatter --update` was run and `git diff` of it is minimal.
+3. If the UI changed (`Garage/Features`, `Garage/Shared`, view code in `Garage/App`): `scripts/check.sh --only ui` passes; a new screen or action gets identifiers in `AccessibilityID` and a scenario in `GarageUITests`. ui-checker is only for the visual look of new UI.
