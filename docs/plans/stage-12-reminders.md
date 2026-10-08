@@ -786,12 +786,20 @@ T9 (`period` правила) в A — строка в DTO без декодер�
     на экране машины — нет). Баннер «Уведомления выключены» без UI-сценария: фейк UI-режима не бывает `denied`, покрыт
     тестами ViewModel.
 
-Проверка на зубы (мутации откатывались): `accessibilityKey(.overdue)` → `"ok"` — падают `testOverdueRuleIsShownOnVehicleScreenAndInList`,
-`testEditRuleChangesItsStatus`; форма игнорирует ошибки черновика — `testFormWithoutIntervalShowsErrorAndStaysOpen`;
-`MaintenanceRulesViewModel.delete` не вызывает порт — `testSwipeDeleteRuleCancelThenConfirm`; запрос разрешения без
-проверки `notDetermined`/интервала — `deniedPermissionIsNotAskedAgain`, `mileageOnlyRuleDoesNotAskForPermission`.
-Не проверен на зубы `testFirstRuleIsSavedWithoutSystemPermissionAlert`: алерта в UI-режиме не бывает по построению (фейк),
-тест страхует от случайной подмены фейка боевым адаптером.
+**Проверка на зубы** (временные мутации, каждая откатывалась правкой, `git status` после отката чист):
+
+| Мутация | Упавшие тесты |
+|---|---|
+| `MaintenanceStatus.accessibilityKey`: `.overdue` → `"ok"` | `testOverdueRuleIsShownOnVehicleScreenAndInList`, `testEditRuleChangesItsStatus` (en и ru) |
+| `MaintenanceRuleFormViewModel.save`: ошибки черновика игнорируются, возвращается `true` | `testFormWithoutIntervalShowsErrorAndStaysOpen` (en и ru) |
+| `MaintenanceRulesViewModel.delete` не вызывает порт | `testSwipeDeleteRuleCancelThenConfirm` (en и ru) |
+| Запрос разрешения без проверки `notDetermined` и интервала по времени | `deniedPermissionIsNotAskedAgain`, `mileageOnlyRuleDoesNotAskForPermission` |
+| **UI-режим использует настоящий `UserNotificationsReminderScheduler` вместо `RecordingReminderScheduler`** (`AppDependencies+UITesting.swift`) | `testFirstRuleIsSavedWithoutSystemPermissionAlert` (en): `MaintenanceTests.swift:80` «Форма не закрылась» (сохранение ждёт ответа на запрос разрешения, пока системный алерт перекрывает экран) и `:92` «Появился системный алерт» (`("1") is not equal to ("0")`) |
+
+Замечание к последней строке: с первой попытки прогон убило ядро (SIGKILL, exit 137) при нехватке памяти с двумя
+загруженными UI-симуляторами — это не результат мутации; после остановки ru-симулятора тест выполнился и упал с двумя
+перечисленными проверками. После падения `xcodebuild` не завершился сам (завис, остановлен вручную): итоговый код возврата
+этого прогона не получен, результат взят из лога тестов (`Executed 1 test, with 2 failures`).
 
 ui-checker (ru, светлая/тёмная, крупный шрифт): исправлены подписи полей числа (`LabeledContent`), сжатие пикера единицы,
 контраст «В норме» (вторичный цвет), отступ значка статуса, подсказка в пустом экране. Оставлено: дефисация сноски и разрыв
@@ -1011,7 +1019,9 @@ Reminder Deleted / Напоминание удалено; уведомление
   чистая `makeRequest`; `replaceAll` на живом центре и доставка баннера — ручная проверка B7 на свежем
   симуляторе (алерт приходит с задержкой до ~35 с). **Закрыт с уточнением (2026-10-08):** `replaceAll` проверен вручную
   (таблица в «Итогах реализации части B2»); доставка баннера этим адаптером, смена пояса (R14) и поведение `add` сразу после
-  выдачи разрешения на реальном устройстве остаются непроверенными.
+  выдачи разрешения на реальном устройстве остаются непроверенными. **Сразу после разрешения `add` на свежем симуляторе
+  отвечает 2003 (`Denied`) до перезагрузки симулятора** (статус настроек при этом `authorized`); на реальном устройстве —
+  ручная проверка, и если повторится — повтор пересчёта после выдачи разрешения.
 - **R4. Пересчёт на каждое сохранение дорогой** (полный снимок на сотнях записей). Дебаунс и одна
   выборка; если в логе `Launch`-подобной категории будет > 50 мс — ограничить снимок машинами с правилами.
 - **R5. ~~Нет tzdata в Linux-контейнере~~ — снят шагом 0.8:** tzdata в `swift:6.4-noble` есть, DST-тесты
