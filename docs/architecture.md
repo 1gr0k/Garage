@@ -220,7 +220,12 @@ ViewModel (`makeServiceRecordFormViewModel(vehicleID:currentMileageKm:)`) и о�
    часть сценария удаления, его проверяют тесты ViewModel. Deployment target 27.2, `#available` не нужен. На
    iOS 27 диалог — popover без кнопки «Отмена» (этапы 9–11).
 3. **Локаль** (`swiftui-specialist/references/localization.md`: `@Environment(\.locale)` вместо
-   `Locale.current`). Во вью следуем совету. Во ViewModel оставляем `Locale.current`: разделитель денег —
+   `Locale.current`). В новых вью следуем совету. Существующие вью пока форматируют деньги и километры в
+   `String` заранее (`Garage/Shared/Formatting.swift`: `Money.formatted`, `Int.kilometers`), а дату строки
+   записи — прямо во вью (`VehicleDetailView`, `ServiceRecordRow`). Такая строка берёт текущую локаль, а не
+   `\.locale` окружения. Переход на `Text(_, format:)` — по правилу бойскаута: при правке вью, которая
+   использует эти значения; отдельной задачей не делаем. Значения внутри `LocalizedStringResource`
+   (сообщения об ошибках) остаются строками. Во ViewModel оставляем `Locale.current`: разделитель денег —
    параметр `init` `ServiceRecordFormViewModel` со значением по умолчанию из `Locale.current`, тесты
    передают своё. Причина: у ViewModel нет окружения SwiftUI. Цена: `.environment(\.locale)` в превью на
    разделитель не влияет — приемлемо.

@@ -135,11 +135,8 @@ struct ServiceRecordFormView: View {
 
     private var receiptSection: some View {
         Section("Receipt") {
-            if let receipt = viewModel.receiptPreview, let image = UIImage(data: receipt) {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(maxHeight: 200)
+            if let receipt = viewModel.receiptPreview {
+                ReceiptPreview(data: receipt)
                 receiptButtons
             } else if viewModel.isReceiptPending {
                 Text("The receipt photo hasn't been downloaded yet.")
@@ -208,6 +205,38 @@ struct ServiceRecordFormView: View {
         guard !Task.isCancelled, item == photoItem else { return }
         // Освобождаем выбор, чтобы тот же снимок можно было выбрать снова.
         photoItem = nil
+    }
+}
+
+/// Превью чека. `UIImage` создаётся по смене данных, а не при каждом пересчёте формы (каждое нажатие
+/// клавиши). Сами пиксели UIKit декодирует лениво при первой отрисовке, на главном потоке.
+/// `UIImage` живёт только здесь: ViewModel отдаёт байты.
+private struct ReceiptPreview: View {
+    let data: Data
+    @State private var image: UIImage?
+    /// Разбор байтов завершён (успешно или нет): отличает «ещё грузится» от «не картинка».
+    @State private var isDecoded = false
+
+    var body: some View {
+        VStack {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxHeight: 200)
+            } else if isDecoded {
+                // Кнопки замены и удаления остаются под превью, битый чек можно убрать.
+                Text("The receipt photo can't be displayed.")
+                    .foregroundStyle(.secondary)
+            } else {
+                // Место под картинку держим, пока идёт разбор: строка формы не прыгает.
+                Color.clear.frame(height: 200)
+            }
+        }
+        .task(id: data) {
+            image = UIImage(data: data)
+            isDecoded = true
+        }
     }
 }
 

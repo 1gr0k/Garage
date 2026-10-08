@@ -158,12 +158,7 @@ private struct VehicleDetailContent: View {
             Text("The vehicle could not be deleted. Please try again.")
         }
         .confirmationDialog(
-            "Delete this record?",
-            isPresented: Binding(
-                get: { viewModel.pendingDeletion != nil },
-                set: { if !$0 { viewModel.pendingDeletion = nil } }),
-            titleVisibility: .visible,
-            presenting: viewModel.pendingDeletion
+            "Delete this record?", item: $viewModel.pendingDeletion, titleVisibility: .visible
         ) { id in
             Button("Delete Record", role: .destructive) {
                 Task { await viewModel.delete(id: id) }
