@@ -22,6 +22,25 @@ enum DTOValidation {
         switch payload {
         case .vehicle(let dto): _ = try vehicle(dto)
         case .serviceRecord(let dto): _ = try serviceRecord(dto)
+        case .maintenanceRule(let dto): _ = try maintenanceRule(dto)
+        }
+    }
+
+    /// Незнакомый `period` сервер не принимает (`ValidationError.unknownPeriod`): терпимость — дело клиента,
+    /// сервер строг к тому, что записывает.
+    static func maintenanceRule(_ dto: MaintenanceRuleDTO) throws(DTOValidationFailure) -> MaintenanceRule {
+        do {
+            var period: ServicePeriod?
+            if let raw = dto.period { period = try ServicePeriod(storageString: raw) }
+            return try MaintenanceRule(
+                id: dto.id,
+                vehicleID: dto.vehicleID,
+                serviceType: try ServiceType(storageString: dto.serviceType),
+                period: period,
+                distanceKm: dto.distanceKm,
+                start: try MaintenanceStart(date: dto.startDate, mileageKm: dto.startMileageKm))
+        } catch {
+            throw .domain(error)
         }
     }
 

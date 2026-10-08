@@ -83,16 +83,12 @@ actor ChangeWriter {
         switch payload {
         case .vehicle(let dto):
             data = try encoder.encode(dto)
+        case .maintenanceRule(let dto):
+            if let rejection = try await requireLiveVehicle(dto.vehicleID, on: db) { return rejection }
+            ownerID = dto.vehicleID
+            data = try encoder.encode(dto)
         case .serviceRecord(let dto):
-            let vehicle = try await EntityRow.query(on: db)
-                .filter(\.$kind == EntityKind.vehicle.rawValue)
-                .filter(\.$entityID == dto.vehicleID)
-                .filter(\.$deleted == false)
-                .first()
-            guard vehicle != nil else {
-                return .rejected(
-                    APIError(code: .vehicleNotFound, message: "Vehicle \(dto.vehicleID.uuidString) does not exist"))
-            }
+            if let rejection = try await requireLiveVehicle(dto.vehicleID, on: db) { return rejection }
             if let receipt = dto.receipt {
                 let exists = try await Receipt.find(receipt.sha256, on: db) != nil
                 guard exists else {
@@ -120,6 +116,20 @@ actor ChangeWriter {
         return .applied(version: version)
     }
 
+    /// Дочерняя сущность (запись, правило) принимается только к существующей, не удалённой машине.
+    private static func requireLiveVehicle(_ vehicleID: UUID, on db: any Database) async throws -> PushOutcome? {
+        let vehicle = try await EntityRow.query(on: db)
+            .filter(\.$kind == EntityKind.vehicle.rawValue)
+            .filter(\.$entityID == vehicleID)
+            .filter(\.$deleted == false)
+            .first()
+        guard vehicle != nil else {
+            return .rejected(
+                APIError(code: .vehicleNotFound, message: "Vehicle \(vehicleID.uuidString) does not exist"))
+        }
+        return nil
+    }
+
     private static func delete(
         _ kind: EntityKind, id: UUID, change: PushChange, row: EntityRow?, on db: any Database
     ) async throws -> PushOutcome {
@@ -139,14 +149,15 @@ actor ChangeWriter {
         try await tombstone(row, version: version, change: change, on: db)
 
         if kind == .vehicle {
-            let records = try await EntityRow.query(on: db)
-                .filter(\.$kind == EntityKind.serviceRecord.rawValue)
+            // Каскад: tombstone каждой живой дочерней сущности машины (записи и правила), по возрастанию версии.
+            let children = try await EntityRow.query(on: db)
+                .filter(\.$kind ~~ EntityKind.allCases.filter(\.isVehicleChild).map(\.rawValue))
                 .filter(\.$vehicleID == id)
                 .filter(\.$deleted == false)
                 .sort(\.$version)
                 .all()
-            for record in records {
-                try await tombstone(record, version: try await nextVersion(on: db), change: change, on: db)
+            for child in children {
+                try await tombstone(child, version: try await nextVersion(on: db), change: change, on: db)
             }
         }
         return .applied(version: version)

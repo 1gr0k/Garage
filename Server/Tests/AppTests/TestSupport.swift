@@ -130,6 +130,22 @@ enum Fixture {
             laborCostKopecks: 100_000, notes: notes, parts: parts, receipt: receipt)
     }
 
+    static func rule(
+        id: UUID = UUID(), vehicleID: UUID, serviceType: String = "oilChange", period: String? = "months:12",
+        distanceKm: Int? = 10_000, startMileageKm: Int = 1000
+    ) -> MaintenanceRuleDTO {
+        MaintenanceRuleDTO(
+            id: id, vehicleID: vehicleID, serviceType: serviceType, period: period, distanceKm: distanceKm,
+            startDate: date, startMileageKm: startMileageKm)
+    }
+
+    static func upsert(
+        _ dto: MaintenanceRuleDTO, base: Int64? = nil, changeID: UUID = UUID(), at modifiedAt: Date = date
+    ) -> PushChange {
+        PushChange(
+            changeID: changeID, baseVersion: base, modifiedAt: modifiedAt, operation: .upsert(.maintenanceRule(dto)))
+    }
+
     static func upsert(
         _ dto: VehicleDTO, base: Int64? = nil, changeID: UUID = UUID(), at modifiedAt: Date = date
     ) -> PushChange {

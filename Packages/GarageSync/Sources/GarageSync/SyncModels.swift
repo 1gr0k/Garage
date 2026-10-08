@@ -16,11 +16,22 @@ public struct EntityRef: Hashable, Sendable {
 public enum SyncEntity: Hashable, Sendable {
     case vehicle(Vehicle)
     case serviceRecord(ServiceRecord, RecordSyncExtras)
+    case maintenanceRule(MaintenanceRule, RuleSyncExtras)
 
     public var ref: EntityRef {
         switch self {
         case .vehicle(let vehicle): EntityRef(kind: .vehicle, id: vehicle.id)
         case .serviceRecord(let record, _): EntityRef(kind: .serviceRecord, id: record.id)
+        case .maintenanceRule(let rule, _): EntityRef(kind: .maintenanceRule, id: rule.id)
+        }
+    }
+
+    /// Машина, которой принадлежит дочерняя сущность (запись, правило); у самой машины `nil`.
+    public var parentVehicleID: Vehicle.ID? {
+        switch self {
+        case .vehicle: nil
+        case .serviceRecord(let record, _): record.vehicleID
+        case .maintenanceRule(let rule, _): rule.vehicleID
         }
     }
 
@@ -28,6 +39,7 @@ public enum SyncEntity: Hashable, Sendable {
         switch self {
         case .vehicle(let vehicle): .vehicle(VehicleDTO(vehicle))
         case .serviceRecord(let record, let extras): .serviceRecord(ServiceRecordDTO(record, extras: extras))
+        case .maintenanceRule(let rule, let extras): .maintenanceRule(MaintenanceRuleDTO(rule, extras: extras))
         }
     }
 
@@ -38,6 +50,9 @@ public enum SyncEntity: Hashable, Sendable {
         case .serviceRecord(let dto):
             let (record, extras) = try ServiceRecord.decoded(from: dto)
             self = .serviceRecord(record, extras)
+        case .maintenanceRule(let dto):
+            let (rule, extras) = try MaintenanceRule.decoded(from: dto)
+            self = .maintenanceRule(rule, extras)
         }
     }
 }

@@ -20,6 +20,23 @@ public struct RecordSyncExtras: Hashable, Sendable {
     }
 }
 
+/// Что сервер знает о правиле, а домен — нет (решение 9a, T9). Адаптер хранилища держит оба поля рядом с правилом
+/// и отдаёт обратно при push, поэтому локальная правка их не стирает.
+public struct RuleSyncExtras: Hashable, Sendable {
+    /// Исходная строка `serviceType`, если сервер прислал незнакомое значение.
+    public var rawServiceType: String?
+    /// Исходная строка `period` (например `"weeks:2"`), если клиент её не понимает: в домене `period == nil`.
+    /// Уходит обратно, пока у правила нет известного интервала по времени. Адаптер хранилища сбрасывает поле только
+    /// когда пользователь явно задал или убрал интервал по времени; правка пробега или типа его не трогает.
+    /// Явное состояние формы для этого — открытый вопрос части B (аналог решения 9e для вида машины).
+    public var rawPeriod: String?
+
+    public init(rawServiceType: String? = nil, rawPeriod: String? = nil) {
+        self.rawServiceType = rawServiceType
+        self.rawPeriod = rawPeriod
+    }
+}
+
 extension Vehicle {
     public init(dto: VehicleDTO) throws {
         guard let kind = VehicleKind(rawValue: dto.kind) else {
@@ -71,6 +88,52 @@ extension ServiceRecord {
             serviceType: serviceType, laborCost: Money(kopecks: dto.laborCostKopecks), notes: dto.notes,
             parts: dto.parts.map(Part.init(dto:)))
         return (record, extras)
+    }
+}
+
+extension MaintenanceRule {
+    /// Маппинг DTO в домен. Незнакомые `serviceType` и `period` читаются терпимо: первый — как `.other(<строка>)`,
+    /// второй — как отсутствие интервала по времени; оригиналы остаются в `extras`. Если после этого не остаётся ни
+    /// одного интервала, бросает `ValidationError.noInterval`: движок пропустит правило (`skipped`).
+    public static func decoded(from dto: MaintenanceRuleDTO) throws -> (rule: MaintenanceRule, extras: RuleSyncExtras) {
+        var extras = RuleSyncExtras()
+        let serviceType: ServiceType
+        do {
+            serviceType = try ServiceType(storageString: dto.serviceType)
+        } catch {
+            serviceType = .other(dto.serviceType)
+            extras.rawServiceType = dto.serviceType
+        }
+        var period: ServicePeriod?
+        if let raw = dto.period {
+            do {
+                period = try ServicePeriod(storageString: raw)
+            } catch .unknownPeriod {
+                extras.rawPeriod = raw
+            }
+            // Известный формат с выходом за границы — нарушение формата, а не эволюция: пробрасывается и пропускает правило.
+        }
+        let rule = try MaintenanceRule(
+            id: dto.id, vehicleID: dto.vehicleID, serviceType: serviceType, period: period,
+            distanceKm: dto.distanceKm, start: MaintenanceStart(date: dto.startDate, mileageKm: dto.startMileageKm))
+        return (rule, extras)
+    }
+}
+
+extension MaintenanceRuleDTO {
+    public init(_ rule: MaintenanceRule, extras: RuleSyncExtras) {
+        // Сырая строка уходит, только пока тип остался тем незнакомым значением, которым был прочитан
+        // (как у записи); пользовательская смена типа определяется сравнением.
+        let serviceType: String
+        if let raw = extras.rawServiceType, rule.serviceType == .other(raw) {
+            serviceType = raw
+        } else {
+            serviceType = rule.serviceType.storageString
+        }
+        self.init(
+            id: rule.id, vehicleID: rule.vehicleID, serviceType: serviceType,
+            period: rule.period?.storageString ?? extras.rawPeriod, distanceKm: rule.distanceKm,
+            startDate: rule.start.date, startMileageKm: rule.start.mileageKm)
     }
 }
 

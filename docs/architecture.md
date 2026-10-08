@@ -194,8 +194,9 @@ ViewModel (`makeServiceRecordFormViewModel(vehicleID:currentMileageKm:)`) и о�
 
 ## Напоминания о ТО
 
-План: `docs/plans/stage-12-reminders.md`. Часть A (GarageCore, контракт, терпимое чтение) реализована;
-хранилище, уведомления и UI — части S и B.
+План: `docs/plans/stage-12-reminders.md`. Часть A (GarageCore, контракт, терпимое чтение) и часть S (вид
+`maintenanceRule` на сервере и в GarageSync) реализованы; в GarageStorage пока заглушка: правила, пришедшие с
+сервера, попадают в `skipped` до части B. Хранилище, уведомления и UI — часть B.
 
 - Домен: `MaintenanceRule` (тип работ, `ServicePeriod` в днях/месяцах, интервал по пробегу, `MaintenanceStart`).
   Срок — чистая функция `MaintenanceSchedule.due(for:records:currentMileageKm:today:calendar:)`: базис — последняя

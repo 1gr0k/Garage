@@ -236,10 +236,10 @@ public actor SyncEngine {
             report.rejected.append((ref, error))
             if ref.kind == .vehicle { rejectedVehicles.insert(ref.id) }
             var vehicleWasRejected = false
-            if case .upsert(.serviceRecord(let record, _)) = change.operation {
-                vehicleWasRejected = rejectedVehicles.contains(record.vehicleID)
+            if case .upsert(let entity) = change.operation, let vehicleID = entity.parentVehicleID {
+                vehicleWasRejected = rejectedVehicles.contains(vehicleID)
             }
-            if error.code == .vehicleNotFound, ref.kind == .serviceRecord, !change.operation.isDelete,
+            if error.code == .vehicleNotFound, ref.kind.isVehicleChild, !change.operation.isDelete,
                 !vehicleWasRejected
             {
                 try await store.apply(RemoteChange(version: nil, operation: .delete(ref)), for: ref)

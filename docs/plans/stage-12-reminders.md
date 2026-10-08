@@ -675,6 +675,45 @@ T9 (`period` правила) в A — строка в DTO без декодер�
   Тест: pull с правилом не ломает синхронизацию записей, правило в `skipped`.
 - Проверка: `scripts/check.sh` целиком (через `check-runner`), включая `ios`.
 
+### Итоги реализации части S (2026-10-08)
+
+Сделано по плану: `EntityKind.maintenanceRule` / `EntityPayload.maintenanceRule` (GarageAPI), сервер (`Validation`,
+`ChangeWriter.upsert` и каскад, `EntityRow.toServerChange`), GarageSync (`RuleSyncExtras`, `SyncEntity.maintenanceRule`,
+маппинг, `vehicleNotFound` для правил, контракт `SyncStore.apply`), заглушка в GarageStorage, `schemaVersion` 2 → 3,
+`ContractTripwireTests`.
+
+**Миграция сервера не нужна:** таблица `entities` общая, `kind` — свободная строка без enum/CHECK
+(`Migrations.swift`, `CreateEntities`), `vehicle_id` уже есть.
+
+**Проверка на зубы** (временные мутации, откат правкой, `git diff` без остатков):
+
+| Мутация | Упавшие тесты |
+|---|---|
+| Фиктивный `case futureProbe` в `EntityKind` (с ветками в исчерпывающих `switch`), `schemaVersion` не менялась | `ContractTripwireTests.entityKindsMatchTheSnapshotOfTheCurrentSchemaVersion` с сообщением «Изменился набор EntityKind: увеличь GarageStore.schemaVersion и добавь снимок…» (снимок `[vehicle, serviceRecord, maintenanceRule]`, сейчас `[…, futureProbe]`); два других теста набора зелёные |
+| T9: сырой `period` не сохраняется (`extras.rawPeriod` не ставится) | `unknownPeriodIsKeptRawAndSentBackWhileDistanceRemains`, `unknownPeriodAndTypeSurviveLocalEdit`, `periodOutOfRangeFailsWhileNonCanonicalStaysRaw` |
+| Движок: `vehicleNotFound` только для `.serviceRecord` | `vehicleNotFoundDeletesRuleLocally` |
+
+Мутации T9 и движка применялись одним прогоном, тест, упавший по нескольким причинам, указан у подходящей.
+
+**Отклонения и решения:**
+
+1. **`period` вне границ (`"months:999"`) — не T9.** Сырым хранится только незнакомый формат
+   (`ValidationError.unknownPeriod`, включая неканоничные `"days:+5"`); известный формат вне границ — нарушение
+   формата, правило пропускается (`skipped`) по принципу «Не трогаем» решения 9a. Сервер отвергает и то, и другое.
+2. **`EntityKind.isVehicleChild`** (GarageAPI, исчерпывающий `switch`) и `SyncEntity.parentVehicleID` (GarageSync) —
+   общее место для «дочерней сущности машины»: каскад сервера, `vehicleNotFound` и `rejectedVehicles` движка не
+   перечисляют виды вручную.
+3. **Заглушка GarageStorage:** upsert правила → `SyncStoreError(cannotApply: StorageMappingError.unsupportedEntity)`
+   (правило в `skipped`, курсор идёт дальше), delete правила — no-op с запоминанием версии (после роста `schemaVersion`
+   в B версии без pending сбрасываются).
+4. `RuleSyncExtras.rawPeriod` уходит на сервер, пока `rule.period == nil`. **Открытый вопрос B:** как отличить
+   «пользователь убрал интервал по времени» от «не трогал» (аналог решения 9e для вида машины): адаптер должен сбрасывать
+   `rawPeriod` только по явному действию в форме.
+5. `FakeSyncServer` (тесты GarageStorage) не валидирует содержимое DTO, в отличие от сервера; задокументировано в
+   комментарии. Тест T9 «сырой период уходит на сервер» в B нужно гнать против правил валидации (или дополнить фейк).
+6. Каскад удаления машины для правил проверен на `InMemorySyncStore` (контракт); на реальном `SwiftDataSyncStore`
+   правил ещё нет — тест каскада SwiftData остаётся в B1.
+
 ---
 
 ## Часть B — хранилище, приложение, UI (после мержа A)
