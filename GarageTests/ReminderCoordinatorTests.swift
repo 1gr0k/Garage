@@ -28,6 +28,13 @@ struct ReminderCoordinatorTests {
         ReminderCoordinator(debounce: debounce) { await recalculations.recalculate() }
     }
 
+    /// Ждёт условия, а не заданного времени; предел нужен только чтобы сломанный тест не завис.
+    private func waitUntil(_ condition: () -> Bool) async {
+        for _ in 0..<1_000 where !condition() {
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+    }
+
     /// Положительный контроль к склейке: один сигнал — ровно один пересчёт.
     @Test func oneSignalMakesExactlyOneRecalculation() async {
         let recalculations = Recalculations()
@@ -60,8 +67,8 @@ struct ReminderCoordinatorTests {
         coordinator.noteChange()
         await gate.waitForArrival()
         coordinator.noteChange()
-        // Дебаунс второго сигнала истёк, а первый пересчёт всё ещё держит барьер.
-        try? await Task.sleep(for: debounce * 4)
+        // Ждём не времени, а состояния: второй сигнал дошёл до координатора и запросил повтор, барьер закрыт.
+        await waitUntil { coordinator.needsAnotherRun }
         #expect(recalculations.started == 1)
 
         await gate.open()
@@ -88,7 +95,7 @@ struct ReminderCoordinatorTests {
         coordinator.noteChange()
         await gate.waitForArrival()
         coordinator.noteChange()
-        try? await Task.sleep(for: debounce * 4)
+        await waitUntil { coordinator.needsAnotherRun }
         await gate.open()
         await coordinator.waitUntilIdle()
 

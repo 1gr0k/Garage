@@ -19,7 +19,8 @@ final class ReminderCoordinator {
     private var generation = 0
     private var hasPendingSignal = false
     private var isRunning = false
-    private var needsAnotherRun = false
+    /// Сигнал пришёл во время пересчёта: после него будет ещё один. Читают тесты, чтобы дождаться этого состояния.
+    private(set) var needsAnotherRun = false
     private var signalsTask: Task<Void, Never>?
 
     init(debounce: Duration = .milliseconds(500), recalculate: @escaping @MainActor () async -> Void) {
