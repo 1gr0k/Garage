@@ -128,3 +128,56 @@ xcodebuild -project Garage.xcodeproj -scheme Garage \
   ```
 - **Не линкуйте в тестовый таргет пакеты, которые уже в хосте.** Статическая копия `GarageCore` в бандле и в хосте даёт два набора метаданных типов: `error as? SyncFailure` в тесте возвращает `nil`, хотя тип тот же. Модули пакетов видны тестам и без `package-product-members` (берутся из `BUILT_PRODUCTS_DIR`), поэтому у `GarageTests` этого ключа нет.
 - На уровне проекта `packages` уже есть; в тестовом таргете `package-product-members` не нужен (см. выше). В примере выше он остался только как форма ключа для пакета, которого нет в хосте.
+
+## UI-test таргет (`GarageUITests`)
+
+Разведка этапа 11 (шаг 0), Xcode `27B5028f`. Пробы шли в копии репозитория; рабочий вид таргета:
+
+```jsonc
+// files: синхронизируемые папки и продукт в группе Products
+{ "kind": "folder", "path": "GarageUITests", "target-membership": [ "GarageUITests" ] },
+{ "kind": "folder", "path": "GarageUIIdentifiers", "target-membership": [ "Garage", "GarageUITests" ] },
+{ "path": "<PRODUCTS>/GarageUITests.xctest", "id": "000000000000000000000122", "type": "wrapper.cfbundle", "index": false },
+
+// targets
+{
+  "name": "GarageUITests",
+  "id": "000000000000000300000000",
+  "product": "Products/GarageUITests.xctest",
+  "product-type": "bundle.ui-testing",
+  "dependencies": [ "Garage" ],
+  "build-phases": [ "compile-sources", "frameworks" ],
+  "package-product-members": [ { "package": "GarageCore", "product-name": "GarageCore", "build-phase": { "build-phase": "frameworks" } } ],
+  "build-settings": {
+    "GENERATE_INFOPLIST_FILE": "YES",
+    "PRODUCT_BUNDLE_IDENTIFIER": "devplaceholder.GarageUITests",
+    "PRODUCT_NAME": "$(TARGET_NAME)",
+    "SDKROOT": "iphoneos",
+    "SUPPORTED_PLATFORMS": "iphoneos iphonesimulator",
+    "SWIFT_VERSION": "6.0",
+    "TARGETED_DEVICE_FAMILY": "1,2",
+    "TEST_TARGET_NAME": "Garage",
+  },
+}
+```
+
+- `"product-type": "bundle.ui-testing"` принимается. Сборка создаёт `GarageUITests-Runner.app` с бандлом в `PlugIns/`, в xctestrun — `IsUITestBundle = true`. Хост — Runner, а не приложение: `TEST_HOST` и `BUNDLE_LOADER` не нужны и не выставляются.
+- **Целевое приложение задаёт `TEST_TARGET_NAME = Garage`** (в xctestrun появляется `UITargetAppPath = …/Garage.app`). Без него `XCUIApplication()` падает: `No target application path specified via test configuration`. Ключ `test-host-target` для UI-bundle **не нужен** и целевое приложение не задаёт; сборка с нуля и прогон без него проходят.
+- `dependencies: ["Garage"]` — как у `GarageTests`: порядок сборки.
+- `GarageCore` можно линковать в UI-test таргет: процессы теста и приложения разные, ловушки двух копий типов нет.
+- Синхронизируемая папка с двумя таргетами в `target-membership` (`["Garage", "GarageUITests"]`) собирается; форматтер ключ не выбрасывает. Файл из неё компилируется в обоих таргетах, поэтому типы в нём `nonisolated`, а в UI-таргете нет `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`.
+- Схема `GarageUITests` в `xcodebuild -list` не показывается (как и `GarageTests`), но `-scheme GarageUITests` работает.
+- **Swift Testing в UI-test bundle не собирается**: `import Testing` даёт `Unable to resolve module dependency: '_Testing_Unavailable'`, `ENABLE_TESTING_SEARCH_PATHS=YES` не помогает. UI-тесты пишутся на XCTest.
+
+### Запуск и язык
+
+- **`-testLanguage`/`-testRegion` с `test-without-building -xctestrun` молча игнорируются.** Приложение получало язык хоста (`ru-RU`) при `-testLanguage en`, `ru` и `fr`; в xctestrun `"TestLanguage" => ""`. Работает запуск по схеме: `xcodebuild test-without-building -project Garage.xcodeproj -scheme GarageUITests -derivedDataPath .build/ui -destination id=<udid> -testLanguage <l> -testRegion <R>`. Проверено: `en` → `en|en_US`, `ru` → `ru|ru_RU`; два параллельных прогона на двух симуляторах с общим derived data работают.
+- Язык хоста `ru-RU` наследуют и свежесозданные симуляторы, поэтому нерабочий флаг даёт ложно зелёный `en`-проход. Защита — тест `testRunsInExpectedLanguage` с ожидаемым языком из `TEST_RUNNER_GARAGE_EXPECTED_LANGUAGE`.
+- `xcrun simctl clone` с запущенным источником падает: `Unable to clone device in current state: Booted`. Устройства создаются `simctl create <имя> <devicetype> <runtime>` (тип и рантайм берутся из `simctl list -j devices` для исходного UDID).
+- `xcodebuild -showBuildSettings -scheme GarageUITests` с `generic/platform=iOS Simulator` и с `id=` ничего не печатает (`Unable to find a destination`); значения сверялись по xctestrun.
+
+### UI
+
+- **`confirmationDialog` — popover.** В иерархии: `Popover` → `Sheet` (label равен заголовку диалога) с кнопкой подтверждения, плюс `Other` с `identifier: 'PopoverDismissRegion'` (label `dismiss popup`). Кнопки «Отмена» нет; `app.sheets.count == 1`. Отмена — тап по `app.otherElements["PopoverDismissRegion"]`.
+- **`PhotosPicker`.** Элементы пикера видны раннеру прямо в иерархии приложения (`NavigationBar` с identifier `PUPickerUnavailableView`, кнопка `Cancel`); отдельного приложения `com.apple.mobileslideshow` нет. На свежем симуляторе пикер показывает «Loading…» (нет фото и разрешений). Выбор фото не проверялся — замена фото остаётся визуальной проверкой.
+- Подзаголовок строки машины в иерархии разбит на два `StaticText` (`2021 · ` и `0 records`) внутри объединённого элемента с label `2021 · , 0 records`.

@@ -26,9 +26,9 @@
 ## Решения
 
 1. **XCTest, а не Swift Testing.** `XCUIApplication` работает в `XCTestCase`; остальные тесты проекта на
-   Swift Testing, и это исключение. На шаге 0 проверить, поддерживает ли Xcode 27.2 UI-автоматизацию из
-   Swift Testing (`@Test` + `XCUIApplication`). Если поддерживает и запуск стабилен — взять Swift Testing
-   ради единообразия, иначе XCTest. Выбор записать в `docs/xcproj-notes.md`.
+   Swift Testing, и это исключение. Проверено на шаге 0: `import Testing` в UI-test bundle не собирается
+   (`Unable to resolve module dependency: '_Testing_Unavailable'`, `ENABLE_TESTING_SEARCH_PATHS=YES` не
+   помогает). Выбор записан в `docs/xcproj-notes.md`.
 
 2. **Таргет без хоста.** UI-тесты идут в отдельном процессе-раннере и управляют `Garage.app` снаружи.
    `TEST_HOST`/`BUNDLE_LOADER` не нужны. Ловушка `GarageTests` с двумя копиями `GarageCore` здесь
@@ -83,13 +83,22 @@
 
 6. **Запуск на двух языках без схем и тест-планов.** Флаги в текущем `xcodebuild` (Xcode 27.2, `27B5028f`)
    есть — проверено `xcodebuild -help`: `-testLanguage` (ISO 639-1), `-testRegion` (ISO 3166-1),
-   `-xctestrun`, `-only-testing`/`-skip-testing`, `-resultBundlePath`, `-parallel-testing-enabled`.
-   Порядок:
+   `-only-testing`/`-skip-testing`, `-resultBundlePath`, `-parallel-testing-enabled`.
+
+   **С `-xctestrun` `-testLanguage`/`-testRegion` молча игнорируются** (шаг 0: приложение получало язык
+   хоста `ru-RU` при `en`, `ru` и `fr`; в xctestrun `"TestLanguage" => ""`). Поэтому запуск идёт по схеме:
    1. `xcodebuild build-for-testing -project Garage.xcodeproj -scheme GarageUITests
       -destination 'generic/platform=iOS Simulator' -derivedDataPath .build/ui` — один раз;
-   2. два фоновых `xcodebuild test-without-building -xctestrun .build/ui/Build/Products/GarageUITests_*.xctestrun
-      -destination id=<udid> -testLanguage <en|ru> -testRegion <US|RU> -resultBundlePath .build/ui/<lang>.xcresult
-      -parallel-testing-enabled NO`, затем `wait` обоих.
+   2. два фоновых `TEST_RUNNER_GARAGE_EXPECTED_LANGUAGE=<en|ru> xcodebuild test-without-building
+      -project Garage.xcodeproj -scheme GarageUITests -derivedDataPath .build/ui -destination id=<udid>
+      -testLanguage <en|ru> -testRegion <US|RU> -resultBundlePath .build/ui/<lang>.xcresult`, затем `wait`
+      обоих. Параллельные прогоны по схеме на двух симуляторах с общим `-derivedDataPath` проверены.
+
+   **Язык хоста — `ru-RU`**, и новые симуляторы наследуют его. Если флаги не сработают (опечатка, другая
+   версия Xcode), все тесты молча пойдут на `ru`, а `en`-проход окажется ложно зелёным. Защита — тест
+   `testRunsInExpectedLanguage` (шаг 5): ожидаемый язык берётся из окружения
+   `TEST_RUNNER_GARAGE_EXPECTED_LANGUAGE` (xcodebuild снимает префикс `TEST_RUNNER_`, тест читает
+   `GARAGE_EXPECTED_LANGUAGE`); без переменной тест падает, а не пропускается. Его запускают оба прохода.
 
    `.build/` уже в `.gitignore`. Собственный `-derivedDataPath` делает проверку «с чистого DerivedData»
    однозначной (`rm -rf .build/ui`) и не трогает четыре `Garage-*` в `~/Library/Developer/Xcode/DerivedData`.
@@ -100,8 +109,8 @@
    приложения и Keychain. Поэтому скрипт ищет устройства по имени и, если их нет, создаёт
    `xcrun simctl create "<имя>" <devicetype> <runtime>`, где тип и рантайм взяты из
    `simctl list -j devices` для исходного UDID. Это «клон по конфигурации»: тот же экран и iOS, чистое
-   состояние. Если на шаге 0 окажется, что `clone` работает и с запущенным источником, допустимо и он, но
-   тогда перед прогоном удалить приложение (`simctl uninstall`). Имена устройств — в `CLAUDE.local.md`.
+   состояние. Проверено на шаге 0: `clone` с запущенным источником падает (`Unable to clone device in
+   current state: Booted`), поэтому только `create`. Имена устройств — в `CLAUDE.local.md`.
 
 7. **Проверки ru-текстов — отдельный класс `LocalizedTextTests`** с явным
    `launchArguments += ["-AppleLanguages", "(ru)", "-AppleLocale", "ru_RU"]`. От `-testLanguage` они
@@ -116,30 +125,27 @@
 
 ## Шаги
 
-### 0. Разведка (до правок, результаты — в `docs/xcproj-notes.md`)
+### 0. Разведка — выполнена, результаты в `docs/xcproj-notes.md` («UI-test таргет»)
 
-- `xcodebuild -help`: `-testLanguage`/`-testRegion` — есть (сделано при планировании).
-- Работают ли `-testLanguage`/`-testRegion` вместе с `test-without-building -xctestrun`, а не только со
-  `-scheme`: проверочный тест печатает `Locale.preferredLanguages` приложения (через видимый элемент или
-  лог) на прогоне `ru`. Если флаг с `-xctestrun` игнорируется — вариант
-  `test-without-building -scheme GarageUITests -derivedDataPath .build/ui`. Если не работает и он —
-  язык передаётся через окружение раннера `TEST_RUNNER_GARAGE_UI_LANGUAGE=ru` (xcodebuild снимает
-  префикс `TEST_RUNNER_`), и тест сам добавляет `-AppleLanguages`.
-- `xcrun simctl clone` с запущенным источником — ошибка или нет (решение 6).
-- Swift Testing + `XCUIApplication` (решение 1).
-- `confirmationDialog` в XCUITest: popover с `PopoverDismissRegion` (ожидается, как на этапах 9 и 10) или
-  лист — от этого зависит `dismissDialog()` (см. «Риски»).
-- Как формат описывает UI-test bundle. В `xcprojformatter` из тестовых ключей есть только
-  `test-host-target` (`strings` по бинарнику; значения `product-type` форматтер не проверяет — он
-  валидирует только схему, а неизвестные ключи молча выбрасывает). Кандидаты, по порядку:
-  - `"product-type": "bundle.ui-testing"` (полное имя `com.apple.product-type.bundle.ui-testing`, по
-    аналогии с `bundle.unit-test`; короткое `ui-testing` по опыту `unit-test` не сработает);
-  - целевое приложение — `"test-host-target": "Garage"`; проверить по
-    `xcodebuild -showBuildSettings -scheme GarageUITests`, выставляется ли `TEST_TARGET_NAME = Garage`
-    (для UI-тестов нужен он, а не `TEST_HOST`). Если нет — задать `TEST_TARGET_NAME` в build-settings явно;
-  - `"dependencies": ["Garage"]` — по уроку `GarageTests`: без него чистая сборка не знает порядок;
-  - `TEST_HOST`/`BUNDLE_LOADER` не задавать: если `test-host-target` их выставит, тесты попытаются
-    загрузиться в приложение. Проверить в `-showBuildSettings`, при необходимости обнулить.
+Пробы шли в копии репозитория (не в коммитах). Итоги:
+
+- `-testLanguage`/`-testRegion` с `test-without-building -xctestrun` **игнорируются**; со `-scheme` +
+  `-derivedDataPath` работают, в том числе на двух симуляторах параллельно (решение 6).
+- `xcrun simctl clone` с запущенным источником падает; используем `simctl create` (решение 6).
+- Swift Testing в UI-test bundle не собирается; XCTest (решение 1).
+- `confirmationDialog` — popover: `Popover` → `Sheet` (label = заголовок диалога), `PopoverDismissRegion`,
+  кнопки «Отмена» нет; `dismissDialog()` тапает `PopoverDismissRegion` (см. «Риски»).
+- UI-test bundle: `"product-type": "bundle.ui-testing"`, целевое приложение — `TEST_TARGET_NAME = Garage`
+  в build-settings, `"dependencies": ["Garage"]`. `test-host-target` для UI-bundle не нужен (проверено
+  сборкой с нуля без него; он и не задаёт целевое приложение: без `TEST_TARGET_NAME`
+  `XCUIApplication()` падает с `No target application path specified via test configuration`).
+  `TEST_HOST`/`BUNDLE_LOADER` не выставляются: хост — `GarageUITests-Runner.app`.
+- Общая папка в двух таргетах (`"target-membership": ["Garage", "GarageUITests"]`) собирается, форматтер
+  ключи не выбрасывает.
+- `PhotosPicker`: после тапа по «Attach Receipt Photo» элементы пикера видны раннеру прямо в иерархии
+  `Garage` (отдельного приложения Photos нет), но на чистом симуляторе пикер показывает
+  `PUPickerUnavailableView` / «Loading…» (нет фото и разрешений). Выбор фото не проверен; замена фото
+  остаётся визуальной проверкой ui-checker'а (шаг 5, п. 2).
 
 ### 1. Таргет `GarageUITests` в `project.xcproj`
 
@@ -149,11 +155,12 @@
    - `files`: `{ "kind": "folder", "path": "GarageUITests", "target-membership": ["GarageUITests"] }`,
      `{ "kind": "folder", "path": "GarageUIIdentifiers", "target-membership": ["Garage", "GarageUITests"] }`,
      продукт `<PRODUCTS>/GarageUITests.xctest` (`wrapper.cfbundle`, новый `id`) в группе Products;
-   - `targets`: `GarageUITests`, `id` `000000000000000300000000`, `product-type` и связь с приложением по
-     шагу 0, `dependencies: ["Garage"]`, `build-phases: ["compile-sources", "frameworks"]`,
+   - `targets`: `GarageUITests`, `id` `000000000000000300000000`, `"product-type": "bundle.ui-testing"`,
+     **без** `test-host-target`, `dependencies: ["Garage"]`, `build-phases: ["compile-sources", "frameworks"]`,
      `package-product-members`: `GarageCore` (фаза `frameworks`), build-settings как у `GarageTests`
      (`GENERATE_INFOPLIST_FILE`, `PRODUCT_BUNDLE_IDENTIFIER = devplaceholder.GarageUITests`, `SDKROOT`,
-     `SUPPORTED_PLATFORMS`, `SWIFT_VERSION`, `TARGETED_DEVICE_FAMILY`), но **без**
+     `SUPPORTED_PLATFORMS`, `SWIFT_VERSION`, `TARGETED_DEVICE_FAMILY`) плюс `TEST_TARGET_NAME = Garage`
+     (целевое приложение UI-тестов), но **без**
      `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`: XCTest-методы UI-тестов и так `@MainActor`, а файл из
      общей папки должен одинаково компилироваться в обоих таргетах (поэтому `nonisolated enum`).
 2. `$DEVELOPER_DIR/usr/bin/xcprojformatter --update Garage.xcodeproj`; проверить, что ни один ключ не
@@ -165,8 +172,8 @@
    `files`; общая папка — оба таргета видят `AccessibilityID`, а `Garage.app` в Release собирается без
    `UITestFixture` (`#if DEBUG`).
 6. Новый раздел в `docs/xcproj-notes.md` — «UI-test таргет (`GarageUITests`)»: рабочий JSON,
-   `product-type`, как задаётся целевое приложение, что выставляет `test-host-target` для UI-bundle,
-   папка в двух таргетах (или почему пакет), что `-testLanguage` работает с `-xctestrun` (или нет).
+   `product-type`, `TEST_TARGET_NAME`, почему нет `test-host-target`, папка в двух таргетах, запуск по схеме
+   вместо `-xctestrun` (раздел уже написан по шагу 0; дополнить тем, что выяснится при реализации).
 
 ### 2. Общая папка `GarageUIIdentifiers/`
 
@@ -212,6 +219,13 @@
 Каждый тест запускает приложение заново с `UITestFixture.launchArgument`, то есть на свежих данных в
 памяти; тесты независимы. Ожидание — `waitForExistence(timeout:)`, без `sleep`. Помощники
 (`launchGarage()`, `openVehicle(_:)`, `swipeDelete(_:)`) — в `GarageUITests/Support.swift`.
+
+`LanguageTests` (оба прохода, en и ru):
+1. `testRunsInExpectedLanguage` — читает `ProcessInfo.processInfo.environment["GARAGE_EXPECTED_LANGUAGE"]`
+   (в `xcodebuild` задаётся как `TEST_RUNNER_GARAGE_EXPECTED_LANGUAGE`, решение 6). Переменной нет или язык
+   не `en`/`ru` — `XCTFail`, а не пропуск. Запускает приложение и сравнивает `label` кнопки
+   `VehicleList.add` с литералом языка: `en` → `Add Vehicle`, `ru` → `Добавить машину`. Нужен, чтобы
+   прогон на `en` не мог молча пройти на `ru` (язык хоста — `ru-RU`).
 
 `VehicleTests` (B6 этапа 10):
 1. `testAddVehicleShowsErrorsThenSaves` — «+» → сохранить пустую форму → ошибки марки/модели/года
@@ -260,8 +274,10 @@
      `sim_destination`; UDID исходного — из `CLAUDE.local.md` или `$SIM_UDID`; загрузить (`simctl boot`,
      ошибку «уже запущен» игнорировать);
   3. `build-for-testing` в `.build/ui`;
-  4. два `test-without-building` в фоне (`&`, логи в `.build/ui/<lang>.log`), `wait` каждого PID; en-проход с
-     `-skip-testing:GarageUITests/LocalizedTextTests`;
+  4. два `test-without-building` по схеме (решение 6) в фоне (`&`, логи в `.build/ui/<lang>.log`), каждый с
+     `TEST_RUNNER_GARAGE_EXPECTED_LANGUAGE=<lang>` (для проверки зубов значение переопределяется
+     переменной `UI_EXPECTED_LANGUAGE_EN`, по умолчанию `en`), `wait` каждого PID; en-проход с
+     `-skip-testing:GarageUITests/LocalizedTextTests`; `LanguageTests` идёт в обоих;
   5. при падении — какой язык упал, хвост лога и путь к `.xcresult`; секция падает, если упал хотя бы один.
   6. `xcodebuild -scheme Garage -configuration Release -destination 'generic/platform=iOS Simulator' build`
      в тот же `.build/ui` — тестовый режим не протёк в Release.
@@ -305,6 +321,9 @@
 - Повторить `--only ui` после `rm -rf .build/ui` (чистая сборка).
 - Намеренно сломать склонение в ru-каталоге локально (не коммитить) → `LocalizedTextTests` падает →
   вернуть. Так видно, что проверка ловит ту ошибку, ради которой написана.
+- Вторая проверка на зубы: временно запустить en-проход с ожидаемым языком `ru`
+  (`UI_EXPECTED_LANGUAGE_EN=ru scripts/check.sh --only ui`) → `testRunsInExpectedLanguage` падает в en-проходе.
+  Заодно прогнать без переменной (напрямую `xcodebuild` без `TEST_RUNNER_…`) → тест падает, а не пропускается.
 - `xcprojformatter --update` и минимальный `git diff` `project.xcproj`.
 - swift-reviewer на diff; ui-checker — одним визуальным проходом по экранам, где добавлены
   идентификаторы (вёрстка не должна измениться).
@@ -331,6 +350,6 @@
   `UI_SERIAL=1` (последовательно, тот же порядок). Флаг добавить, только если понадобится.
 - **Формат `project.xcproj` без документации.** Ключ связи UI-bundle с приложением может отличаться от
   `test-host-target`; форматтер выбрасывает неизвестные ключи молча, поэтому после `--update` сверять
-  `git diff`, а связь — по `-showBuildSettings` (шаг 0).
+  `git diff`. Решено на шаге 0: связь задаёт `TEST_TARGET_NAME = Garage`, ключ `test-host-target` не нужен.
 - **Общая папка в двух таргетах.** Если формат или сборка этого не допускают — пакет
   `GarageUIIdentifiers` (решение 4). План шагов 2–5 от этого не меняется, кроме путей.
