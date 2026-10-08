@@ -32,7 +32,7 @@ final class VehicleTests: XCTestCase {
         confirm.tap()
 
         XCTAssertTrue(app.waitForDisappearance(app.textFields[Form.make]), "Форма не закрылась")
-        XCTAssertEqual(app.vehicleRows.count, rowsBefore + 1)
+        XCTAssertTrue(app.waitForCount(app.vehicleRows, rowsBefore + 1), "Строк: \(app.vehicleRows.count)")
     }
 
     @MainActor
@@ -55,7 +55,7 @@ final class VehicleTests: XCTestCase {
         app.buttons["BackButton"].tap()
         let subtitle = app.descendants(matching: .any)[List.rowSubtitle(landCruiser)]
         XCTAssertTrue(subtitle.waitForExistence(timeout: uiTimeout))
-        XCTAssertTrue(subtitle.label.hasPrefix("2020"), "Подзаголовок: \(subtitle.label)")
+        XCTAssertTrue(app.waitForLabel(subtitle, hasPrefix: "2020"), "Подзаголовок: \(subtitle.label)")
     }
 
     @MainActor

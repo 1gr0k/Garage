@@ -41,17 +41,14 @@ extension XCUIApplication {
         cells.containing(.button, identifier: element.identifier).firstMatch
     }
 
-    /// Подтверждает `confirmationDialog`: кнопка по идентификатору, а если он не дошёл до popover'а —
-    /// единственная кнопка диалога (от языка не зависит).
+    /// Подтверждает `confirmationDialog` кнопкой по идентификатору. Запасных путей нет: потерянный
+    /// идентификатор должен ронять тест.
     @MainActor
     func confirmDialog(_ identifier: String) {
         // Идентификатор доходит до кнопки диалога, но в иерархии popover'а встречается дважды.
         let button = buttons.matching(identifier: identifier).firstMatch
-        if button.waitForExistence(timeout: uiTimeout) {
-            button.tap()
-        } else {
-            popovers.buttons.firstMatch.tap()
-        }
+        XCTAssertTrue(button.waitForExistence(timeout: uiTimeout), "Нет кнопки диалога \(identifier)")
+        button.tap()
     }
 
     /// Прокручивает форму вверх, пока элемент не появится: ленивые ячейки `Form` вне экрана
@@ -94,12 +91,33 @@ extension XCUIApplication {
     @MainActor
     func dismissDialog() {
         let region = otherElements["PopoverDismissRegion"]
-        if region.waitForExistence(timeout: uiTimeout) {
-            region.tap()
-        } else if sheets.firstMatch.exists {
-            // Если диалог всё же лист: кнопка отмены по роли, она последняя.
-            sheets.firstMatch.buttons.allElementsBoundByIndex.last?.tap()
-        }
+        // Без запасных путей: если диалог перестал быть popover'ом, тест должен упасть, а не нажать наугад.
+        XCTAssertTrue(region.waitForExistence(timeout: uiTimeout), "Нет PopoverDismissRegion: диалог не popover?")
+        region.tap()
+    }
+
+    /// Ждёт, пока число элементов запроса станет равным `count`.
+    @MainActor
+    func waitForCount(_ query: XCUIElementQuery, _ count: Int) -> Bool {
+        let expectation = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "count == %d", count), object: query)
+        return XCTWaiter().wait(for: [expectation], timeout: uiTimeout) == .completed
+    }
+
+    /// Ждёт, пока `label` элемента начнётся с `prefix`.
+    @MainActor
+    func waitForLabel(_ element: XCUIElement, hasPrefix prefix: String) -> Bool {
+        let expectation = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label BEGINSWITH %@", prefix), object: element)
+        return XCTWaiter().wait(for: [expectation], timeout: uiTimeout) == .completed
+    }
+
+    /// Ждёт, пока в `label` элемента появится `substring`.
+    @MainActor
+    func waitForLabel(_ element: XCUIElement, contains substring: String) -> Bool {
+        let expectation = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label CONTAINS %@", substring), object: element)
+        return XCTWaiter().wait(for: [expectation], timeout: uiTimeout) == .completed
     }
 
     /// Ждёт, пока элемент исчезнет.

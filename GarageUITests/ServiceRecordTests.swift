@@ -22,9 +22,10 @@ final class ServiceRecordTests: XCTestCase {
         app.buttons[Form.confirm].tap()
         XCTAssertTrue(app.waitForDisappearance(mileage), "Форма не закрылась")
 
-        // Число — данные, а не перевод: сравниваем цифры без разделителей, чтобы не зависеть от языка.
-        let digits = row.label.filter(\.isNumber)
-        XCTAssertTrue(digits.contains("88000"), "Строка записи: \(row.label)")
+        // Число — данные, а не перевод: ждём, пока строка обновится («88,000 km» / «88 000 км»), а затем
+        // сравниваем цифры без разделителей, чтобы не зависеть от языка.
+        XCTAssertTrue(app.waitForLabel(row, contains: "88"), "Строка записи не обновилась: \(row.label)")
+        XCTAssertTrue(row.label.filter(\.isNumber).contains("88000"), "Строка записи: \(row.label)")
     }
 
     @MainActor

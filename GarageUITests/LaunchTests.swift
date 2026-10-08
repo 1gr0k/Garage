@@ -3,8 +3,7 @@ import XCTest
 final class LaunchTests: XCTestCase {
     @MainActor
     func testLaunches() throws {
-        let app = XCUIApplication()
-        app.launch()
+        let app = launchGarage()
         XCTAssertEqual(app.state, .runningForeground)
     }
 }

@@ -24,7 +24,14 @@ import Foundation
             let container = try await AppBootstrap.prepare(inMemory: true, defaults: defaults)
             // Обычный путь записи через порт: в очередь синхронизации ставятся изменения, отправлять их некому.
             let repository = SwiftDataServiceRecordRepository(container: container)
-            for (record, receipt) in try fixtureRecords() {
+            let records = try fixtureRecords()
+            // Фикстура и её описание для тестов не должны разойтись.
+            let actualCounts = Dictionary(grouping: records, by: \.0.vehicleID).mapValues(\.count)
+            for (vehicleID, expected) in UITestFixture.recordCounts
+            where actualCounts[vehicleID, default: 0] != expected {
+                throw UITestingError.fixtureMismatch(vehicleID)
+            }
+            for (record, receipt) in records {
                 try await repository.add(record, receiptImage: receipt)
             }
             return AppDependencies(
@@ -34,6 +41,7 @@ import Foundation
 
         private enum UITestingError: Error {
             case defaultsUnavailable
+            case fixtureMismatch(UUID)
         }
 
         /// Записи фикстуры: количества по машинам — `UITestFixture.recordCounts`, особые записи — по `id`.

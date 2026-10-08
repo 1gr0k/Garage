@@ -67,8 +67,8 @@ ViewModel реагирует по-разному, адаптер перевод�
 
 ## Composition root
 
-`Garage/App/AppDependencies.swift` — единственное место, где создаются адаптеры
-(`SwiftDataServiceRecordRepository`, `ImageIOReceiptPreparer`, `SwiftDataSyncService`,
+`Garage/App/AppDependencies.swift` (и его расширение `AppDependencies+UITesting.swift` — тестовый режим,
+только Debug) — единственное место, где создаются адаптеры (`SwiftDataServiceRecordRepository`, `ImageIOReceiptPreparer`, `SwiftDataSyncService`,
 `SyncAPIDeviceRegistrar`, `KeychainCredentialsStore`) и собираются use case'ы. Наружу отдаёт фабрики
 ViewModel (`makeServiceRecordFormViewModel(vehicleID:currentMileageKm:)`) и общий `syncViewModel`;
 в дерево вью попадает через `.environment`. Платформенные значения (`UIDevice.current.name`)

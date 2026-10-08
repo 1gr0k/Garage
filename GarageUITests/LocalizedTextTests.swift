@@ -24,14 +24,18 @@ final class LocalizedTextTests: XCTestCase {
     @MainActor
     func testRecordCountPluralsInList() throws {
         let app = launchRussian()
-        let expected: [(UUID, String)] = [
-            (Vehicle.SampleID.landCruiser, "1 запись"),
-            (Vehicle.SampleID.transporter, "3 записи"),
-            (Vehicle.SampleID.cb500x, "5 записей"),
-            (Vehicle.SampleID.rockhopper, "0 записей"),
+        // Число записей — из фикстуры, слово в нужном склонении — литерал ru (one/few/many).
+        let words: [(UUID, String)] = [
+            (Vehicle.SampleID.landCruiser, "запись"),
+            (Vehicle.SampleID.transporter, "записи"),
+            (Vehicle.SampleID.cb500x, "записей"),
+            (Vehicle.SampleID.rockhopper, "записей"),
         ]
-        for (id, count) in expected {
-            XCTAssertTrue(subtitle(app, id).hasSuffix(count), "«\(subtitle(app, id))» должно кончаться на «\(count)»")
+        for (id, word) in words {
+            let count = UITestFixture.recordCounts[id] ?? -1
+            let expected = "\(count) \(word)"
+            let label = subtitle(app, id)
+            XCTAssertTrue(label.hasSuffix(expected), "«\(label)» должно кончаться на «\(expected)»")
         }
     }
 
@@ -39,8 +43,14 @@ final class LocalizedTextTests: XCTestCase {
     func testVehicleDeletionDialogPlural() throws {
         let app = launchRussian()
         let expected: [(UUID, String)] = [
-            (Vehicle.SampleID.transporter, "Вместе с ней будут удалены 3 записи. Это нельзя отменить."),
-            (Vehicle.SampleID.cb500x, "Вместе с ней будут удалены 5 записей. Это нельзя отменить."),
+            (
+                Vehicle.SampleID.transporter,
+                "Вместе с ней будут удалены \(UITestFixture.recordCounts[Vehicle.SampleID.transporter] ?? -1) записи. Это нельзя отменить."
+            ),
+            (
+                Vehicle.SampleID.cb500x,
+                "Вместе с ней будут удалены \(UITestFixture.recordCounts[Vehicle.SampleID.cb500x] ?? -1) записей. Это нельзя отменить."
+            ),
         ]
         for (id, message) in expected {
             let row = app.vehicleRow(id)

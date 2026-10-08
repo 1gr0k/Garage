@@ -190,13 +190,15 @@ ui_simulator() {
     devices=$(xcrun simctl list -j devices)
     udid=$(jq -r --arg name "$name" '[.devices[][] | select(.name == $name and .isAvailable)][0].udid // empty' <<<"$devices")
     if [[ -z "$udid" ]]; then
-        source=$(sim_source_udid)
+        source=$(sim_source_udid) || return 1
         runtime=$(jq -r --arg udid "$source" '.devices | to_entries[] | select(.value[] | .udid == $udid) | .key' <<<"$devices")
         device_type=$(jq -r --arg udid "$source" '[.devices[][] | select(.udid == $udid)][0].deviceTypeIdentifier // empty' <<<"$devices")
         [[ -n "$runtime" && -n "$device_type" ]] || { echo "Simulator $source not found" >&2; return 1; }
-        udid=$(xcrun simctl create "$name" "$device_type" "$runtime")
+        # В bash 3.2 `set -e` не действует внутри `$(…)`: каждый шаг проверяется явно.
+        udid=$(xcrun simctl create "$name" "$device_type" "$runtime") || return 1
     fi
-    xcrun simctl bootstatus "$udid" -b >/dev/null
+    [[ -n "$udid" ]] || { echo "Simulator \"$name\" was not created" >&2; return 1; }
+    xcrun simctl bootstatus "$udid" -b >/dev/null || return 1
     printf '%s\n' "$udid"
 }
 
@@ -208,11 +210,13 @@ section_ui() {
     require jq ui
     local build=.build/ui langs="en ru" lang udid status=0
     local -a pids=() udids=() codes=()
+    # Прерывание скрипта не должно оставлять фоновые xcodebuild.
+    trap 'kill ${pids[@]+"${pids[@]}"} 2>/dev/null || true' INT TERM
     echo "==> build-for-testing GarageUITests"
     xcodebuild build-for-testing -project Garage.xcodeproj -scheme GarageUITests \
         -destination 'generic/platform=iOS Simulator' -derivedDataPath "$build"
     for lang in $langs; do
-        udid=$(ui_simulator "$lang")
+        udid=$(ui_simulator "$lang") && [[ -n "$udid" ]] || return 1
         udids+=("$udid")
         echo "==> Garage UI $lang: $udid"
     done
@@ -256,8 +260,12 @@ section_ui() {
     echo "==> Release build (test mode must not leak)"
     xcodebuild build -project Garage.xcodeproj -scheme Garage -configuration Release \
         -destination 'generic/platform=iOS Simulator' -derivedDataPath "$build"
-    if strings "$build/Build/Products/Release-iphonesimulator/Garage.app/Garage" | grep -q 'GarageUITesting'; then
-        echo "ui: the Release build contains the UI-testing launch argument" >&2
+    # `grep -c` читает весь вывод: `grep -q` закрыл бы канал раньше, и `strings` под pipefail дал бы 141.
+    # Короткая строка может лежать в коде инлайном, поэтому ищем ещё и символ тестового режима.
+    local release_binary=$build/Build/Products/Release-iphonesimulator/Garage.app/Garage leaks
+    leaks=$(strings -a "$release_binary" | grep -cE 'GarageUITesting|bootstrapForUITesting|InMemoryCredentialsStore' || true)
+    if [[ "$leaks" != 0 ]]; then
+        echo "ui: the Release build contains the UI-testing mode ($leaks matches)" >&2
         return 1
     fi
 }
