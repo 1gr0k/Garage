@@ -182,24 +182,27 @@ final class FakeReminderScheduler: ReminderScheduling, @unchecked Sendable {
     private let lock = NSLock()
     private var _replaced: [[ScheduledReminder]] = []
     private var _requestCount = 0
-    var status: ReminderAuthorization
-    var statusAfterRequest: ReminderAuthorization
+    private var _status: ReminderAuthorization
+    let statusAfterRequest: ReminderAuthorization
     var error: (any Error)?
 
     init(status: ReminderAuthorization = .authorized, statusAfterRequest: ReminderAuthorization = .authorized) {
-        self.status = status
+        _status = status
         self.statusAfterRequest = statusAfterRequest
     }
 
+    var status: ReminderAuthorization { lock.withLock { _status } }
     var replaced: [[ScheduledReminder]] { lock.withLock { _replaced } }
     var requestCount: Int { lock.withLock { _requestCount } }
 
     func authorization() async -> ReminderAuthorization { status }
 
     func requestAuthorization() async -> ReminderAuthorization {
-        lock.withLock { _requestCount += 1 }
-        if status == .notDetermined { status = statusAfterRequest }
-        return status
+        lock.withLock {
+            _requestCount += 1
+            if _status == .notDetermined { _status = statusAfterRequest }
+            return _status
+        }
     }
 
     func replaceAll(with reminders: [ScheduledReminder]) async throws {

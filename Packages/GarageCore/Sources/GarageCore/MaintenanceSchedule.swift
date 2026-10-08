@@ -1,6 +1,7 @@
 import Foundation
 
-/// Календарный день без времени и часового пояса.
+/// Календарный день без времени и часового пояса. Год — григорианский (эпохи не хранятся): считать в
+/// других календарях нельзя, `MaintenanceSchedule` сам переходит на григорианский.
 public struct CalendarDay: Hashable, Sendable, Comparable, Codable {
     public var year: Int
     public var month: Int
@@ -73,9 +74,9 @@ public struct MaintenanceDue: Hashable, Sendable {
 }
 
 public enum MaintenanceSchedule {
-    /// «Скоро» — за столько дней до срока (включая день срока)…
+    /// «Скоро» — не более чем за столько дней до срока (включая день срока)…
     public static let soonDays = 30
-    /// …или за столько километров.
+    /// …или километров. Для коротких интервалов порог — половина интервала (см. `due`).
     public static let soonKm = 1_000
 
     /// Срок правила — чистая функция без побочных эффектов.
@@ -94,6 +95,7 @@ public enum MaintenanceSchedule {
         today: Date,
         calendar: Calendar
     ) -> MaintenanceDue {
+        let calendar = Self.gregorian(matching: calendar)
         let basis = Self.basis(for: rule, records: records, calendar: calendar)
 
         var status = MaintenanceStatus.ok
@@ -109,7 +111,8 @@ public enum MaintenanceSchedule {
                 let day = CalendarDay(dueDate, calendar: calendar)
                 dueDay = day
                 if let left = CalendarDay(today, calendar: calendar).days(until: day, calendar: calendar) {
-                    status = max(status, left < 0 ? .overdue : left <= soonDays ? .dueSoon : .ok)
+                    let threshold = min(soonDays, approximateDays(of: period) / 2)
+                    status = max(status, left < 0 ? .overdue : left <= threshold ? .dueSoon : .ok)
                 }
             }
         }
@@ -119,10 +122,29 @@ public enum MaintenanceSchedule {
             let due = basis.mileageKm + distanceKm
             dueMileageKm = due
             let remaining = due - currentMileageKm
-            status = max(status, remaining <= 0 ? .overdue : remaining <= soonKm ? .dueSoon : .ok)
+            let threshold = min(soonKm, distanceKm / 2)
+            status = max(status, remaining <= 0 ? .overdue : remaining <= threshold ? .dueSoon : .ok)
         }
 
         return MaintenanceDue(basis: basis, dueDay: dueDay, dueMileageKm: dueMileageKm, status: status)
+    }
+
+    /// Порог «скоро» не больше половины интервала: правило «каждые 14 дней» или «каждые 500 км» не должно
+    /// быть «скоро» сразу после обслуживания. `soonDays`/`soonKm` — верхняя граница порога.
+    private static func approximateDays(of period: ServicePeriod) -> Int {
+        switch period {
+        case .days(let value): value
+        case .months(let value): value * 30
+        }
+    }
+
+    /// Расчёт всегда идёт в григорианском календаре с поясом переданного: в календаре с эпохами (японский)
+    /// год `CalendarDay` без эпохи был бы неоднозначным, а `fireAt` для уведомления — в григорианских
+    /// компонентах (адаптер задаёт им `calendar: .gregorian`).
+    static func gregorian(matching calendar: Calendar) -> Calendar {
+        var gregorian = Calendar(identifier: .gregorian)
+        gregorian.timeZone = calendar.timeZone
+        return gregorian
     }
 
     private static func basis(
@@ -165,6 +187,7 @@ extension MaintenanceSchedule {
         calendar: Calendar,
         limit: Int = ReminderWindow.limit
     ) -> [ScheduledReminder] {
+        let calendar = Self.gregorian(matching: calendar)
         let vehiclesByID = Dictionary(vehicles.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         var candidates: [(fireDate: Date, reminder: ScheduledReminder)] = []
         for rule in rules where rule.period != nil {

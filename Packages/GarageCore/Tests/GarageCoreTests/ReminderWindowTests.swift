@@ -98,10 +98,16 @@ private func reminders(
     #expect(result.first?.fireAt == DateComponents(year: 2027, month: 5, day: 20, hour: 10, minute: 0))
 }
 
-@Test func repeatedCallOnTheSameDataGivesTheSameResult() throws {
-    let rules = try (1...10).map { try makeRule(period: .days($0 * 3), startDate: noon(2026, 1, 1)) }
+/// Порядок на входе не влияет на результат, в том числе при одинаковых датах (там решает `ruleID`).
+@Test func resultDoesNotDependOnInputOrder() throws {
+    let sameDay = try (0..<10).map { _ in try makeRule(period: .days(5), startDate: noon(2026, 1, 1)) }
+    let distinct = try (1...5).map { try makeRule(period: .days($0 * 3), startDate: noon(2026, 1, 1)) }
+    let rules = sameDay + distinct
     let first = try reminders(rules: rules, now: noon(2026, 1, 2))
-    let second = try reminders(rules: rules, now: noon(2026, 1, 2))
+    let second = try reminders(rules: rules.reversed(), now: noon(2026, 1, 2))
+    let third = try reminders(rules: rules.shuffled(), now: noon(2026, 1, 2))
+
+    #expect(first.count == 15)
     #expect(first == second)
-    #expect(first.count == 10)
+    #expect(first == third)
 }

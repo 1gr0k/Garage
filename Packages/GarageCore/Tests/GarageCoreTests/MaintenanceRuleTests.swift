@@ -25,6 +25,12 @@ import Testing
     #expect(throws: ValidationError.periodOutOfRange(3651)) { try ServicePeriod(storageString: "days:3651") }
 }
 
+/// Незнакомая запись должна оставаться «незнакомой» (и уходить на сервер сырой), а не нормализоваться.
+@Test(arguments: ["days:+5", "days:007", "months:012", "days:", "days: 5", "days:5 "])
+func servicePeriodRejectsNonCanonicalNumbers(string: String) {
+    #expect(throws: ValidationError.unknownPeriod(string)) { try ServicePeriod(storageString: string) }
+}
+
 // MARK: Invariants
 
 @Test func ruleNeedsAtLeastOneInterval() {

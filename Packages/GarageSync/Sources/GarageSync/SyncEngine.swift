@@ -290,6 +290,8 @@ public actor SyncEngine {
             } catch SyncError.api(_, let error) where error.code == .cursorExpired && cursor != nil {
                 try await store.setCursor(nil)
                 cursor = nil
+                // Полная выгрузка принесёт те же незнакомые элементы заново — не считаем их дважды.
+                report.skippedUnrecognized = []
                 continue
             }
             report.skippedUnrecognized += page.skipped

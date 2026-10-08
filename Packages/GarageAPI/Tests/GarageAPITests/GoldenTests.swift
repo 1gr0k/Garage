@@ -343,6 +343,24 @@ private let goldenCases: [GoldenCase] = [
         }
     }
 
+    @Test func strictErrorPointsAtTheOffendingKey() {
+        func failingKey(entity: String, op: String) -> String? {
+            do {
+                _ = try decode(
+                    PushChange.self,
+                    #"{"changeID":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","modifiedAt":"2026-10-07T09:30:00Z","op":"\#(op)","entity":"\#(entity)","id":"11111111-1111-4111-8111-111111111111"}"#
+                )
+                return nil
+            } catch let DecodingError.dataCorrupted(context) {
+                return context.codingPath.last?.stringValue
+            } catch {
+                return nil
+            }
+        }
+        #expect(failingKey(entity: "part", op: "delete") == "entity")
+        #expect(failingKey(entity: "vehicle", op: "merge") == "op")
+    }
+
     @Test func unknownPushStatusBecomesUnrecognized() throws {
         let response = try decode(
             PushResponse.self,

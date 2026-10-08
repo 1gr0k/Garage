@@ -34,6 +34,13 @@ extension ServicePeriod {
     private static let daysPrefix = "days:"
     private static let monthsPrefix = "months:"
 
+    /// Число в каноничной записи: `"+5"` и `"007"` не принимаем, иначе незнакомая строка вернулась бы на сервер
+    /// изменённой (`"days:5"`), а не сырой.
+    private static func canonicalInt(_ digits: Substring) -> Int? {
+        guard let value = Int(digits), String(value) == digits else { return nil }
+        return value
+    }
+
     public var storageString: String {
         switch self {
         case .days(let value): Self.daysPrefix + String(value)
@@ -45,9 +52,11 @@ extension ServicePeriod {
     /// - Throws: `ValidationError.unknownPeriod` на незнакомый формат (например `"weeks:2"`),
     ///   `periodOutOfRange` на значение вне границ.
     public init(storageString string: String) throws(ValidationError) {
-        if string.hasPrefix(Self.daysPrefix), let value = Int(string.dropFirst(Self.daysPrefix.count)) {
+        if string.hasPrefix(Self.daysPrefix), let value = Self.canonicalInt(string.dropFirst(Self.daysPrefix.count)) {
             self = .days(value)
-        } else if string.hasPrefix(Self.monthsPrefix), let value = Int(string.dropFirst(Self.monthsPrefix.count)) {
+        } else if string.hasPrefix(Self.monthsPrefix),
+            let value = Self.canonicalInt(string.dropFirst(Self.monthsPrefix.count))
+        {
             self = .months(value)
         } else {
             throw .unknownPeriod(string)

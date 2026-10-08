@@ -111,7 +111,8 @@ extension ChangeOperation {
             try self.init(tolerantFrom: container)
         } catch let unrecognized as UnrecognizedChange {
             throw DecodingError.dataCorruptedError(
-                forKey: .op, in: container, debugDescription: "Unknown \(unrecognized.description)")
+                forKey: unrecognized.description.hasPrefix("entity:") ? .entity : .op, in: container,
+                debugDescription: "Unknown \(unrecognized.description)")
         }
     }
 }

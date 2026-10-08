@@ -46,6 +46,22 @@ private func pushedChangeIDs(_ request: HTTPRequest) throws -> [UUID] {
         #expect(await store.cursor() == "3")
     }
 
+    /// Сброс курсора (`cursorExpired`) посреди выгрузки перезапускает pull: пропущенное не считается дважды.
+    @Test func skippedUnrecognizedIsNotCountedTwiceAfterCursorExpired() async throws {
+        let store = InMemorySyncStore()
+        let unknown =
+            #"{"version":2,"modifiedAt":"2026-10-07T09:01:00.000Z","op":"upsert","entity":"futureEntity","data":{}}"#
+        let transport = FakeHTTPTransport([
+            respond(#"{"changes":[\#(unknown)],"cursor":"5","hasMore":true}"#),
+            .respond(410, Data(#"{"error":{"code":"cursorExpired","message":"expired"}}"#.utf8)),
+            respond(#"{"changes":[\#(unknown)],"cursor":"9","hasMore":false}"#),
+        ])
+        let report = try await makeEngine(store, transport).sync()
+
+        #expect(report.skippedUnrecognized == ["entity:futureEntity"])
+        #expect(await store.cursor() == "9")
+    }
+
     /// Положительный контроль: битое изменение известного вида по-прежнему валит синхронизацию.
     @Test func pullWithMalformedKnownChangeStillFails() async throws {
         let store = InMemorySyncStore()

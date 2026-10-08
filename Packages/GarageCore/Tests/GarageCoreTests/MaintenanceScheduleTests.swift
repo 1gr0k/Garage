@@ -206,6 +206,65 @@ private func day(_ year: Int, _ month: Int, _ day: Int) -> CalendarDay {
     #expect(berlin.date(from: fireAt) == isoDate("2027-03-28T08:00:00Z"))
 }
 
+/// Переход «осень»: сутки длятся 25 часов. Сложение секундами (86 400) дало бы 23:00 того же дня.
+@Test func dueDayAcrossFallBackTransition() throws {
+    let newYork = makeCalendar("America/New_York")
+    let rule = try makeRule(period: .days(1), startDate: noon(2027, 11, 6, calendar: newYork))
+    let result = due(rule, today: noon(2027, 11, 1, calendar: newYork), calendar: newYork)
+
+    #expect(result.dueDay == day(2027, 11, 7))
+    let reminders = MaintenanceSchedule.nextReminders(
+        rules: [rule], vehicles: [try makeVehicle()], records: [], now: noon(2027, 11, 1, calendar: newYork),
+        calendar: newYork)
+    // 10:00 EST = 15:00 UTC.
+    let fireAt = try #require(reminders.first?.fireAt)
+    #expect(makeCalendar("America/New_York").date(from: fireAt) == isoDate("2027-11-07T15:00:00Z"))
+}
+
+// MARK: Календарь пользователя с эпохами
+
+@Test func japaneseCalendarDoesNotConfuseEras() throws {
+    var japanese = Calendar(identifier: .japanese)
+    japanese.timeZone = calendar.timeZone
+    let rule = try makeRule(period: .months(12), startDate: noon(2026, 1, 10))
+    let heisei = try makeRecord(date: noon(2018, 12, 1))
+    let reiwa = try makeRecord(date: noon(2019, 6, 1))
+
+    // Запись эпохи Хэйсэй: срок — июнь 2019, а не «31-й год Рэйва» (2049).
+    let old = due(rule, records: [heisei], today: noon(2026, 1, 1), calendar: japanese)
+    #expect(old.dueDay == day(2019, 12, 1))
+    #expect(old.status == .overdue)
+    // Поздняя запись выбирается по григорианскому порядку, а не по номеру года внутри эпохи.
+    let both = due(rule, records: [heisei, reiwa], today: noon(2026, 1, 1), calendar: japanese)
+    #expect(both.basis.date == reiwa.date)
+    #expect(both.dueDay == day(2020, 6, 1))
+
+    let reminders = MaintenanceSchedule.nextReminders(
+        rules: [try makeRule(period: .days(30), startDate: noon(2026, 1, 1))], vehicles: [try makeVehicle()],
+        records: [], now: noon(2026, 1, 2), calendar: japanese)
+    #expect(reminders.first?.fireAt == DateComponents(year: 2026, month: 1, day: 31, hour: 10, minute: 0))
+}
+
+// MARK: Короткие интервалы
+
+@Test func thresholdOfShortIntervalsIsHalfTheInterval() throws {
+    let fortnight = try makeRule(period: .days(14), startDate: noon(2026, 1, 1))
+    #expect(due(fortnight, today: noon(2026, 1, 1)).status == .ok)  // сразу после обслуживания
+    #expect(due(fortnight, today: noon(2026, 1, 7)).status == .ok)  // за 8 дней при пороге 7
+    #expect(due(fortnight, today: noon(2026, 1, 8)).status == .dueSoon)  // за 7 дней
+    #expect(due(fortnight, today: noon(2026, 1, 15)).status == .dueSoon)
+    #expect(due(fortnight, today: noon(2026, 1, 16)).status == .overdue)
+
+    let month = try makeRule(period: .months(1), startDate: noon(2026, 1, 1))
+    #expect(due(month, today: noon(2026, 1, 1)).status == .ok)  // 31 день до срока, порог 15
+
+    let short = try makeRule(period: nil, distanceKm: 500, startMileageKm: 10_000)
+    #expect(due(short, mileage: 10_000, today: noon(2026, 1, 1)).status == .ok)
+    #expect(due(short, mileage: 10_249, today: noon(2026, 1, 1)).status == .ok)
+    #expect(due(short, mileage: 10_250, today: noon(2026, 1, 1)).status == .dueSoon)
+    #expect(due(short, mileage: 10_500, today: noon(2026, 1, 1)).status == .overdue)
+}
+
 @Test func daysUntilCountsCalendarDaysAcrossTransition() {
     let newYork = makeCalendar("America/New_York")
     #expect(day(2027, 3, 13).days(until: day(2027, 3, 15), calendar: newYork) == 2)
