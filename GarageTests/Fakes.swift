@@ -103,6 +103,59 @@ actor FakeVehicleRepository: VehicleRepository {
     }
 }
 
+actor FakeRuleRepository: MaintenanceRuleRepository {
+    private(set) var added: [MaintenanceRule] = []
+    private(set) var updated: [(rule: MaintenanceRule, period: MaintenancePeriodChange)] = []
+    private(set) var deleted: [MaintenanceRule.ID] = []
+    private var addError: (any Error)?
+    private var updateError: (any Error)?
+    private var deleteError: (any Error)?
+
+    func failAdd(with error: (any Error)?) { addError = error }
+    func failUpdate(with error: (any Error)?) { updateError = error }
+    func failDelete(with error: (any Error)?) { deleteError = error }
+
+    func add(_ rule: MaintenanceRule) async throws {
+        if let addError { throw addError }
+        added.append(rule)
+    }
+
+    func update(_ rule: MaintenanceRule, period: MaintenancePeriodChange) async throws {
+        if let updateError { throw updateError }
+        updated.append((rule, period))
+    }
+
+    func delete(id: MaintenanceRule.ID) async throws {
+        deleted.append(id)
+        if let deleteError { throw deleteError }
+    }
+}
+
+/// Планировщик уведомлений без системы: считает запросы разрешения.
+actor FakeReminderScheduler: ReminderScheduling {
+    private var status: ReminderAuthorization
+    private let statusAfterRequest: ReminderAuthorization
+    private(set) var requestCount = 0
+
+    init(status: ReminderAuthorization = .notDetermined, afterRequest: ReminderAuthorization = .authorized) {
+        self.status = status
+        self.statusAfterRequest = afterRequest
+    }
+
+    /// Пользователь поменял разрешение в Настройках.
+    func setStatus(_ status: ReminderAuthorization) { self.status = status }
+
+    func authorization() async -> ReminderAuthorization { status }
+
+    func requestAuthorization() async -> ReminderAuthorization {
+        requestCount += 1
+        if status == .notDetermined { status = statusAfterRequest }
+        return status
+    }
+
+    func replaceAll(with reminders: [ScheduledReminder]) async throws {}
+}
+
 struct FakeReceiptPreparer: ReceiptImagePreparing {
     var transform: @Sendable (Data) async throws -> Data = { $0 }
 

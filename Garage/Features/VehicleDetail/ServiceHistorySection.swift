@@ -12,6 +12,11 @@ struct ServiceHistorySection: View {
 
     var body: some View {
         Section("Service History") {
+            // Пустое состояние — строка секции, а не оверлей: над списком теперь есть другие секции.
+            if records.isEmpty {
+                ContentUnavailableView("No Service Records", systemImage: "wrench.and.screwdriver")
+                    .accessibilityIdentifier(AccessibilityID.VehicleDetail.noRecords)
+            }
             ForEach(records) { record in
                 Button {
                     onOpen(record.id)

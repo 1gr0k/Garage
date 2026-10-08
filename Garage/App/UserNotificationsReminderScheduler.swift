@@ -45,13 +45,25 @@ nonisolated struct UserNotificationsReminderScheduler: ReminderScheduling {
             $0.identifier.hasPrefix(Self.identifierPrefix)
         }
         let stale = pending.map(\.identifier).filter { wanted[$0] == nil }
-        if !stale.isEmpty { center.removePendingNotificationRequests(withIdentifiers: stale) }
+        if !stale.isEmpty {
+            center.removePendingNotificationRequests(withIdentifiers: stale)
+            #if DEBUG
+                for identifier in stale { logger.info("Removed \(identifier, privacy: .public)") }
+            #endif
+        }
         let current = Dictionary(pending.map { ($0.identifier, $0) }, uniquingKeysWith: { $1 })
         var added = 0
         for (identifier, request) in wanted.sorted(by: { $0.key < $1.key }) {
             if let existing = current[identifier], Self.isSame(existing, request) { continue }
             try await center.add(request)
             added += 1
+            #if DEBUG
+                // Ручная проверка адаптера: идентификатор и момент срабатывания видны в `log stream` (проба 0.4).
+                let fireDate = (request.trigger as? UNCalendarNotificationTrigger)?.nextTriggerDate()
+                logger.info(
+                    "Scheduled \(identifier, privacy: .public) fires at \(fireDate?.description ?? "nil", privacy: .public)"
+                )
+            #endif
         }
         logger.info("Reminders: \(wanted.count) wanted, \(stale.count) removed, \(added) added")
     }

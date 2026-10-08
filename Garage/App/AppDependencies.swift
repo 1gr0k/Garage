@@ -26,14 +26,17 @@ final class AppDependencies {
     private let vehicleRepository: any VehicleRepository
     private let currentYear: () -> Int
 
-    // Напоминания о ТО (этап 12). Экран правил и формы берут отсюда use case'ы — в части UI.
-    // Как и остальные порты, не торчат во вью: ViewModel экрана правил получит их через фабрики (часть UI).
+    // Напоминания о ТО (этап 12). Как и остальные порты, не торчат во вью: ViewModel экрана правил и формы
+    // получают их через фабрики `makeMaintenanceRule*ViewModel`.
     private let ruleRepository: any MaintenanceRuleRepository
     private let addMaintenanceRule: AddMaintenanceRule
     private let updateMaintenanceRule: UpdateMaintenanceRule
     private let reminderScheduler: any ReminderScheduling
     /// Один на приложение: единственный запускатель пересчёта уведомлений.
     let reminderCoordinator: ReminderCoordinator
+    /// «Сегодня» и календарь для сроков во вью; UI-режим фиксирует их (решение 12).
+    let today: @Sendable () -> Date
+    let calendar: @Sendable () -> Calendar
 
     /// - Parameters:
     ///   - reminderScheduler: боевой по умолчанию; тесты, превью и UI-режим подставляют свой.
@@ -74,6 +77,8 @@ final class AppDependencies {
         addMaintenanceRule = AddMaintenanceRule(rules: rules)
         updateMaintenanceRule = UpdateMaintenanceRule(rules: rules)
         self.reminderScheduler = reminderScheduler
+        self.today = today
+        self.calendar = calendar
         let reschedule = RescheduleReminders(snapshot: rules, scheduler: reminderScheduler)
         let coordinator = ReminderCoordinator {
             do {
@@ -125,6 +130,39 @@ final class AppDependencies {
 
     func makeVehicleDetailViewModel() -> VehicleDetailViewModel {
         VehicleDetailViewModel(records: recordEditing, vehicles: vehicleRepository)
+    }
+
+    func makeMaintenanceRulesViewModel() -> MaintenanceRulesViewModel {
+        MaintenanceRulesViewModel(
+            rules: ruleRepository, scheduler: reminderScheduler,
+            openSettings: {
+                if let url = URL(string: UIApplication.openNotificationSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            },
+            permissionChanged: { [reminderCoordinator] in reminderCoordinator.noteChange() })
+    }
+
+    /// Форма нового правила. `currentMileageKm` — пробег машины (стартовое «последнее ТО было»).
+    func makeMaintenanceRuleFormViewModel(
+        vehicleID: Vehicle.ID, currentMileageKm: Int
+    ) -> MaintenanceRuleFormViewModel {
+        MaintenanceRuleFormViewModel(
+            mode: .add(vehicleID: vehicleID, currentMileageKm: currentMileageKm), today: today(),
+            addRule: addMaintenanceRule, updateRule: updateMaintenanceRule, rules: ruleRepository,
+            scheduler: reminderScheduler,
+            permissionChanged: { [reminderCoordinator] in reminderCoordinator.noteChange() })
+    }
+
+    /// Форма правки. `unrecognizedPeriod` — сырой период, которого клиент не понял (см. `MaintenanceRuleDraft`).
+    func makeMaintenanceRuleFormViewModel(
+        editing rule: MaintenanceRule, unrecognizedPeriod: String?
+    ) -> MaintenanceRuleFormViewModel {
+        MaintenanceRuleFormViewModel(
+            mode: .edit(original: rule, unrecognizedPeriod: unrecognizedPeriod), today: today(),
+            addRule: addMaintenanceRule, updateRule: updateMaintenanceRule, rules: ruleRepository,
+            scheduler: reminderScheduler,
+            permissionChanged: { [reminderCoordinator] in reminderCoordinator.noteChange() })
     }
 
     /// Боевой запуск: хранилище готовится вне главного потока, затем собираются зависимости.

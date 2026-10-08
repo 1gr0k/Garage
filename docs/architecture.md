@@ -195,8 +195,9 @@ ViewModel (`makeServiceRecordFormViewModel(vehicleID:currentMileageKm:)`) и о�
 ## Напоминания о ТО
 
 План: `docs/plans/stage-12-reminders.md`. Часть A (GarageCore, контракт, терпимое чтение), часть S (вид
-`maintenanceRule` на сервере и в GarageSync) и часть B1 (хранилище правил, T7, уведомления, координатор) реализованы.
-Экран правил, форма и секция на экране машины (B0, B3–B4) — отдельной сессией.
+`maintenanceRule` на сервере и в GarageSync), часть B1 (хранилище правил, T7, уведомления, координатор) и UI
+(`Features/MaintenanceRules/`: экран правил, форма, секция «Обслуживание» на экране машины) реализованы.
+Список правил машины со статусами собирает `MaintenanceOverview.statuses` (GarageCore); вью только показывают.
 
 - Хранилище: `MaintenanceRuleEntity` (каскад с `VehicleEntity`), `RuleLog` (очередь синхронизации в том же сохранении),
   `SwiftDataMaintenanceRuleRepository` (порт правил + `MaintenanceSnapshotReading`), `DisplayMapping.validRules()`.

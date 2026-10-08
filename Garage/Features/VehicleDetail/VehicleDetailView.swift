@@ -17,6 +17,7 @@ private struct VehicleDetailContent: View {
     @Environment(AppDependencies.self) private var dependencies
     @Query private var vehicleEntities: [VehicleEntity]
     @Query private var recordEntities: [ServiceRecordEntity]
+    @Query private var ruleEntities: [MaintenanceRuleEntity]
     @State private var viewModel: VehicleDetailViewModel
     @Environment(\.dismiss) private var dismiss
     // Данные для форм снимаются в момент открытия, а шиты висят на `body`, а не на ветке с содержимым:
@@ -48,6 +49,7 @@ private struct VehicleDetailContent: View {
     init(vehicleID: Vehicle.ID, viewModel: VehicleDetailViewModel) {
         _vehicleEntities = Query(filter: #Predicate { $0.id == vehicleID })
         _recordEntities = Query(ServiceRecordEntity.descriptor(forVehicle: vehicleID))
+        _ruleEntities = Query(filter: #Predicate { $0.vehicle?.id == vehicleID })
         _viewModel = State(initialValue: viewModel)
     }
 
@@ -87,20 +89,22 @@ private struct VehicleDetailContent: View {
         let records = recordEntities.validRecords()
         let receiptIDs = receiptIDs
         let mileage = vehicle.currentMileageKm(records: records)
+        // Один снимок «сегодня» на отрисовку: статус и заголовок «Сегодня» не разойдутся около полуночи.
+        let today = dependencies.today()
+        let calendar = dependencies.calendar()
         @Bindable var viewModel = viewModel
         return List {
             VehicleSummarySection(mileage: mileage, totalCost: records.totalCost)
+            MaintenanceSection(
+                vehicleID: vehicle.id,
+                statuses: MaintenanceOverview.statuses(
+                    rules: ruleEntities.validRules(), vehicle: vehicle, records: records, today: today,
+                    calendar: calendar),
+                today: today, calendar: calendar)
             ServiceHistorySection(
                 records: records, receiptIDs: receiptIDs, isDeleting: viewModel.isDeleting,
                 onOpen: { id in recordEdit = recordEditRequest(for: id, vehicle: vehicle, records: records) },
                 onDelete: { viewModel.pendingDeletion = $0 })
-        }
-        .overlay {
-            if records.isEmpty {
-                ContentUnavailableView("No Service Records", systemImage: "wrench.and.screwdriver")
-                    .accessibilityIdentifier(AccessibilityID.VehicleDetail.noRecords)
-                    .padding(.top, 120)
-            }
         }
         .navigationTitle(vehicle.displayName)
         .navigationBarTitleDisplayMode(.inline)
