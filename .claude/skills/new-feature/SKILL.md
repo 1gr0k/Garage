@@ -67,6 +67,7 @@ description: Чек-лист новой фичи приложения по сл�
 - [ ] `Garage/Features/<Feature>/<Feature>View.swift` — тонкая: биндинги к VM, вызовы методов VM. Чтение для показа — `@Query` + `validVehicles()` / `validRecords()` (новый маппинг — в `DisplayMapping.swift`).
 - [ ] Во вью нет `modelContext`, `.insert(`, `context.save()`, `ServiceLog`/`SyncQueue`/…, `import GarageSync`/`GarageAPI`.
 - [ ] Интерактивные элементы и значимые тексты получают `.accessibilityIdentifier(AccessibilityID.<Экран>.<элемент>)`; строки идентификаторов — в `GarageUIIdentifiers/AccessibilityID.swift`, вёрстка не меняется.
+- [ ] Перед новым или незнакомым API SwiftUI загрузи скилл `swiftui-whats-new-27`; пример из скилла переноси по правилам раздела «Расхождения со скиллами Apple» в `docs/architecture.md`.
 - [ ] Новая папка в `Garage/` подхватывается сама (синхронизируемая папка) — `project.xcproj` не трогать.
 
 ## 7. Composition root
