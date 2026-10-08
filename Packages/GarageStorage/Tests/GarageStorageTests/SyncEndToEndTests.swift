@@ -393,9 +393,8 @@ private actor DeleteDuringPushTransport: HTTPTransport {
         #expect(await server.liveCount(.vehicle) == 0)
     }
 
-    /// Заглушка части S: правило, пришедшее с сервера, попадает в `skipped`, а синхронизация машин и записей
-    /// не ломается и курсор идёт дальше. Модель правил и их хранение — часть B этапа 12.
-    @Test func pulledMaintenanceRuleIsSkippedWithoutBreakingTheRest() async throws {
+    /// Правило, пришедшее с сервера, применяется вместе с машиной и записью (в части S здесь стояла заглушка с `skipped`).
+    @Test func pulledMaintenanceRuleIsAppliedWithTheRest() async throws {
         let server = FakeSyncServer()
         let other = try Device()
         let vehicle = Vehicle.samples[0]
@@ -419,10 +418,12 @@ private actor DeleteDuringPushTransport: HTTPTransport {
         let device = try Device()
         let report = try await device.sync(with: server)
 
-        #expect(report.skipped.map { $0.ref } == [EntityRef(kind: .maintenanceRule, id: rule.id)])
-        #expect(report.pulled == 2)
+        #expect(report.skipped.isEmpty)
+        #expect(report.pulled == 3)
         #expect(try device.vehicles().map(\.id) == [vehicle.id])
         #expect(try device.records().count == 1)
+        let rules = try ModelContext(device.container).fetch(FetchDescriptor<MaintenanceRuleEntity>())
+        #expect(try rules.map { try $0.toDomain() } == [rule])
         #expect(try await device.store.cursor() != nil)
         let again = try await device.sync(with: server)
         #expect(again.pulled == 0 && again.skipped.isEmpty)

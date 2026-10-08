@@ -722,7 +722,27 @@ T9 (`period` правила) в A — строка в DTO без декодер�
 
 ---
 
+### Решения по открытым вопросам S (пользователь, 2026-10-08)
+
+1. Сырой `period` — как решение 9e: «не изменён» — явное состояние формы (`MaintenanceRuleDraft.keepsUnrecognizedPeriod`,
+   снимается любой записью в поля интервала), порт получает `MaintenancePeriodChange` (`keepUnrecognized` / `set`).
+2. Тест T9 по частям: в Server — период, отданный сервером, принимается обратно побайтно
+   (`periodServedByTheServerIsAcceptedBackByteForByte`); в GarageStorage — сырой период уходит в push побайтно таким же
+   (`rawPeriodSurvivesKeepUnrecognizedEditsAndGoesToPushByteForByte`).
+3. `docs/api.md`, «Правила эволюции контракта», п. 1: расширение допустимого диапазона — тоже изменение контракта,
+   старые клиенты такие правила пропускают.
+
 ## Часть B — хранилище, приложение, UI (после мержа A)
+
+> **Статус:** B1 (хранилище, T7, уведомления, координатор, composition root) сделан в PR `stage-12-reminders-b`.
+> Не сделано и уходит в отдельную сессию: B0 (разбиение `VehicleDetailContent`), B3 (ViewModel формы и списка правил),
+> B4 (вью и `AccessibilityID`), B6 (строки экрана), B7 (UI-сценарии `MaintenanceTests`, ui-checker на ru, ручная
+> проверка адаптера). Решения B1, не вошедшие в код: `SyncReport.stillPending` оставлен как есть (влияет только на
+> лог `unrecognizedOutcomes`, лог пишется по `unrecognizedOutcomes`, а не по `stillPending`); снимок для пересчёта
+> берёт `validVehicles()` (лишняя загрузка `serviceRecords` ради счётчика — R4, оптимизировать, если пересчёт станет
+> заметен); тест «сигнал во время пересчёта» полагается на паузу и на медленной машине может не дойти до ветки
+> повтора (ветку страхует мутационная проверка); фиксированные «сегодня» и календарь UI-режима
+> (`UITestFixture.today`, `timeZoneIdentifier`) уже проброшены через `AppDependencies.init`. Ещё: сообщение `ValidationError.periodOutOfRange` должно называть границы (форма).
 
 ### B0. Разбиение экрана машины (решение 18)
 

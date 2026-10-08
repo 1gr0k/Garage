@@ -29,7 +29,7 @@ public enum SyncSupport {
     }
 
     /// Queues everything that exists locally but never went through sync (once per store):
-    /// vehicles first, then records, so a vehicle always precedes its records.
+    /// vehicles first, then records and rules, so a vehicle always precedes its children.
     static func bootstrapIfNeeded(in context: ModelContext) throws {
         let state = try SyncState.current(in: context)
         guard !state.bootstrapped else { return }
@@ -52,7 +52,7 @@ public enum SyncSupport {
                 skipped = true
                 continue
             }
-            try SyncQueue.enqueueUpsert(.vehicle(vehicle), in: context)
+            try SyncQueue.enqueueUpsert(.vehicle(vehicle, entity.syncExtras), in: context)
         }
         for entity in records.sorted(by: { $0.date < $1.date }) {
             let ref = EntityRef(kind: .serviceRecord, id: entity.id)
@@ -62,6 +62,18 @@ public enum SyncSupport {
                 continue
             }
             try SyncQueue.enqueueUpsert(.serviceRecord(record, entity.syncExtras), in: context)
+        }
+        // Правила — после машин. Без них «Забыть устройство» (`resetSyncState`) не отправило бы правила на новый сервер.
+        for entity in try context.fetch(FetchDescriptor<MaintenanceRuleEntity>()).sorted(by: {
+            $0.startDate < $1.startDate
+        }) {
+            let ref = EntityRef(kind: .maintenanceRule, id: entity.id)
+            guard !known.contains(SyncState.refKey(ref)) else { continue }
+            guard let rule = try? entity.toDomain() else {
+                skipped = true
+                continue
+            }
+            try SyncQueue.enqueueUpsert(.maintenanceRule(rule, entity.syncExtras), in: context)
         }
         state.bootstrapped = !skipped
     }

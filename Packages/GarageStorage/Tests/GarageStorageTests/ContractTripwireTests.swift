@@ -13,6 +13,7 @@ import Testing
 private let knownEntityKinds: [Int: [String]] = [
     2: ["vehicle", "serviceRecord"],
     3: ["vehicle", "serviceRecord", "maintenanceRule"],
+    4: ["vehicle", "serviceRecord", "maintenanceRule"],
 ]
 
 private let hint =

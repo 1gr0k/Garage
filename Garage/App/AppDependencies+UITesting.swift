@@ -36,7 +36,13 @@ import Foundation
             }
             return AppDependencies(
                 container: container, credentials: InMemoryCredentialsStore(),
-                registrar: DisabledDeviceRegistrar())
+                registrar: DisabledDeviceRegistrar(), reminderScheduler: RecordingReminderScheduler(),
+                today: { UITestFixture.today },
+                calendar: {
+                    var calendar = Calendar(identifier: .gregorian)
+                    calendar.timeZone = TimeZone(identifier: UITestFixture.timeZoneIdentifier) ?? .gmt
+                    return calendar
+                })
         }
 
         private enum UITestingError: Error {
@@ -114,6 +120,29 @@ import Foundation
         func readServerURL() -> URL? { state.withLock { $0.serverURL } }
         func saveServerURL(_ url: URL) { state.withLock { $0.serverURL = url } }
         func deleteServerURL() { state.withLock { $0.serverURL = nil } }
+    }
+
+    /// Планировщик уведомлений без системы: `notDetermined` → запрос сразу `authorized`, без системного алерта
+    /// (выдать разрешение заранее нечем, проба 0.1); `replaceAll` запоминает набор.
+    private nonisolated final class RecordingReminderScheduler: ReminderScheduling {
+        private struct State {
+            var status = ReminderAuthorization.notDetermined
+            var reminders: [ScheduledReminder] = []
+        }
+        private let state = Mutex(State())
+
+        func authorization() async -> ReminderAuthorization { state.withLock { $0.status } }
+
+        func requestAuthorization() async -> ReminderAuthorization {
+            state.withLock {
+                if $0.status == .notDetermined { $0.status = .authorized }
+                return $0.status
+            }
+        }
+
+        func replaceAll(with reminders: [ScheduledReminder]) async throws {
+            state.withLock { $0.reminders = reminders }
+        }
     }
 
     /// Регистрация всегда падает как сетевой сбой: тестовый режим в сеть не ходит.

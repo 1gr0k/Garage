@@ -8,18 +8,54 @@ private let logger = Logger(subsystem: "Garage", category: "Storage")
 public struct VehicleListItem: Identifiable, Hashable, Sendable {
     public var vehicle: Vehicle
     public var recordCount: Int
+    /// Исходный вид машины, если сервер прислал незнакомый (в `vehicle.kind` тогда `.car`): форма правки
+    /// открывается с ним и не выбирает вид за пользователя (решение 9e плана этапа 12).
+    public var rawKind: String?
 
     public var id: Vehicle.ID { vehicle.id }
 
-    public init(vehicle: Vehicle, recordCount: Int) {
+    public init(vehicle: Vehicle, recordCount: Int, rawKind: String? = nil) {
         self.vehicle = vehicle
         self.recordCount = recordCount
+        self.rawKind = rawKind
     }
 }
 
 extension VehicleEntity {
     public func listItem() throws -> VehicleListItem {
-        VehicleListItem(vehicle: try toDomain(), recordCount: serviceRecords.count)
+        VehicleListItem(vehicle: try toDomain(), recordCount: serviceRecords.count, rawKind: rawKind)
+    }
+}
+
+/// Всё, что нужно форме правки правила: само правило и сырой период, которого клиент не понял.
+public struct MaintenanceRuleEditingSnapshot: Identifiable, Hashable, Sendable {
+    public var rule: MaintenanceRule
+    public var rawPeriod: String?
+
+    public var id: MaintenanceRule.ID { rule.id }
+
+    public init(rule: MaintenanceRule, rawPeriod: String?) {
+        self.rule = rule
+        self.rawPeriod = rawPeriod
+    }
+}
+
+extension MaintenanceRuleEntity {
+    public func editingSnapshot() throws -> MaintenanceRuleEditingSnapshot {
+        MaintenanceRuleEditingSnapshot(rule: try toDomain(), rawPeriod: rawPeriod)
+    }
+}
+
+extension Sequence where Element == MaintenanceRuleEntity {
+    public func validRules() -> [MaintenanceRule] {
+        compactMap { entity in
+            do {
+                return try entity.toDomain()
+            } catch {
+                logger.error("Skipping invalid maintenance rule \(entity.id, privacy: .public): \(error)")
+                return nil
+            }
+        }
     }
 }
 

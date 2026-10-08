@@ -97,6 +97,36 @@ import Testing
     }
 }
 
+/// T9, часть сервера: период, который сервер отдал при pull, он же принимает обратно побайтно — клиент, не
+/// понимающий период, возвращает строку без изменений (вторая часть — в GarageStorage, сырой период уходит в push).
+/// Границы допустимого диапазона проверяются отдельно: расширение диапазона — изменение контракта (docs/api.md).
+@Test(arguments: ["months:1", "months:12", "months:120", "days:1", "days:30", "days:3650"])
+func periodServedByTheServerIsAcceptedBackByteForByte(period: String) async throws {
+    try await withTestApp { _, client in
+        let vehicle = Fixture.vehicle()
+        let rule = Fixture.rule(vehicleID: vehicle.id, period: period)
+        _ = try await client.push(Fixture.upsert(vehicle))
+        let created = try await client.push(Fixture.upsert(rule)).appliedVersion()
+
+        let served = try await client.pull().changes[1]
+        guard case .maintenanceRule(let dto)? = served.upsertedPayload else {
+            Issue.record("expected a rule upsert")
+            return
+        }
+        #expect(dto.period == period)
+
+        // Клиент меняет только пробег и возвращает период ровно таким, каким получил.
+        var edited = dto
+        edited.distanceKm = 12_000
+        let updated = try await client.push(Fixture.upsert(edited, base: created)).appliedVersion()
+        let again = try await client.pull(after: String(created)).changes
+        #expect(again.map(\.version) == [updated])
+        #expect(again.first?.upsertedPayload == .maintenanceRule(edited))
+        guard case .maintenanceRule(let stored)? = again.first?.upsertedPayload else { return }
+        #expect(stored.period == period)
+    }
+}
+
 @Test func deletingRuleWritesTombstoneAndKeepsVehicle() async throws {
     try await withTestApp { _, client in
         let vehicle = Fixture.vehicle()

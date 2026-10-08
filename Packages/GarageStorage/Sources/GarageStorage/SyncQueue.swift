@@ -76,16 +76,18 @@ enum SyncQueue {
         state.nextSequence += 1
     }
 
-    /// Убирает из очереди pending-upsert'ы записей машины; pending-delete остаются. Работает в контексте
+    /// Убирает из очереди pending-upsert'ы записей и правил машины; pending-delete остаются. Работает в контексте
     /// вызывающего и ничего не сохраняет, вызывать нужно **до** `context.delete(vehicle)`: после него
-    /// связь `serviceRecords` уже не перечислит записи.
+    /// связи `serviceRecords` и `maintenanceRules` уже не перечислят детей.
     ///
     /// Upsert записи удалённой машины сервер всё равно отклонил бы (`vehicleNotFound` или
     /// `conflict/deleted`), а `uploadReceipts` попробовал бы загрузить чек несуществующей записи.
     /// Delete записи безвреден: сервер никогда не отклоняет delete, а каскад пропускает уже удалённые.
-    static func dropPendingUpserts(ofRecordsOf vehicle: VehicleEntity, in context: ModelContext) throws {
-        for record in vehicle.serviceRecords {
-            let ref = EntityRef(kind: .serviceRecord, id: record.id)
+    static func dropPendingUpserts(ofChildrenOf vehicle: VehicleEntity, in context: ModelContext) throws {
+        let refs =
+            vehicle.serviceRecords.map { EntityRef(kind: .serviceRecord, id: $0.id) }
+            + vehicle.maintenanceRules.map { EntityRef(kind: .maintenanceRule, id: $0.id) }
+        for ref in refs {
             guard let pending = try SyncState.pendingEntity(for: ref, in: context) else { continue }
             // Нечитаемую строку очереди (например, от будущей версии) не трогаем: её тип неизвестен.
             guard let change = try? pendingChange(pending), !change.operation.isDelete else { continue }

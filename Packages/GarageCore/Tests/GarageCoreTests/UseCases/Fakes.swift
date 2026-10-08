@@ -40,11 +40,14 @@ final class FakeVehicleRepository: VehicleRepository, @unchecked Sendable {
     private let lock = NSLock()
     private var _added: [Vehicle] = []
     private var _updated: [Vehicle] = []
+    private var _kindChanges: [VehicleKindChange] = []
     private var _deleted: [UUID] = []
     var error: (any Error)?
 
     var added: [Vehicle] { lock.withLock { _added } }
     var updated: [Vehicle] { lock.withLock { _updated } }
+    /// Параллельно с `updated`: что просили сделать с видом при каждой правке.
+    var kindChanges: [VehicleKindChange] { lock.withLock { _kindChanges } }
     var deleted: [UUID] { lock.withLock { _deleted } }
 
     func add(_ vehicle: Vehicle) async throws {
@@ -52,9 +55,12 @@ final class FakeVehicleRepository: VehicleRepository, @unchecked Sendable {
         lock.withLock { _added.append(vehicle) }
     }
 
-    func update(_ vehicle: Vehicle) async throws {
+    func update(_ vehicle: Vehicle, kind: VehicleKindChange) async throws {
         if let error { throw error }
-        lock.withLock { _updated.append(vehicle) }
+        lock.withLock {
+            _updated.append(vehicle)
+            _kindChanges.append(kind)
+        }
     }
 
     func delete(id: Vehicle.ID) async throws {
@@ -140,11 +146,14 @@ final class FakeRuleRepository: MaintenanceRuleRepository, @unchecked Sendable {
     private let lock = NSLock()
     private var _added: [MaintenanceRule] = []
     private var _updated: [MaintenanceRule] = []
+    private var _periodChanges: [MaintenancePeriodChange] = []
     private var _deleted: [UUID] = []
     var error: (any Error)?
 
     var added: [MaintenanceRule] { lock.withLock { _added } }
     var updated: [MaintenanceRule] { lock.withLock { _updated } }
+    /// Параллельно с `updated`: что просили сделать с интервалом по времени при каждой правке.
+    var periodChanges: [MaintenancePeriodChange] { lock.withLock { _periodChanges } }
     var deleted: [UUID] { lock.withLock { _deleted } }
 
     func add(_ rule: MaintenanceRule) async throws {
@@ -152,9 +161,12 @@ final class FakeRuleRepository: MaintenanceRuleRepository, @unchecked Sendable {
         lock.withLock { _added.append(rule) }
     }
 
-    func update(_ rule: MaintenanceRule) async throws {
+    func update(_ rule: MaintenanceRule, period: MaintenancePeriodChange) async throws {
         if let error { throw error }
-        lock.withLock { _updated.append(rule) }
+        lock.withLock {
+            _updated.append(rule)
+            _periodChanges.append(period)
+        }
     }
 
     func delete(id: MaintenanceRule.ID) async throws {

@@ -27,14 +27,20 @@ public struct UpdateMaintenanceRule: Sendable {
     /// Проверяет черновик, сохраняет `id` и `vehicleID` исходного правила. Правило не изменилось →
     /// репозиторий не вызывается (синхронизация не получает лишний upsert). Исходное правило сравнивается
     /// в нормализованном виде (как после `makeRule`: обрезанный текст `.other`).
+    ///
+    /// Интервал по времени: пока форма не трогала его поля (`draft.keepsUnrecognizedPeriod`), порту уходит
+    /// `keepUnrecognized` и сырой незнакомый период остаётся. Любое явное действие с полем — `set`, и это изменение,
+    /// даже если итоговое правило равно исходному (период «убран» из правила, у которого он и так был `nil`).
     /// - Throws: `MaintenanceRuleDraft.Errors` (как есть); ошибки репозитория (`RepositoryError.ruleNotFound`).
     public func execute(draft: MaintenanceRuleDraft, original: MaintenanceRule) async throws {
         let rule = try draft.makeRule(id: original.id, vehicleID: original.vehicleID)
+        let periodChange: MaintenancePeriodChange = draft.keepsUnrecognizedPeriod ? .keepUnrecognized : .set
         let baseline =
             (try? MaintenanceRuleDraft(rule: original).makeRule(id: original.id, vehicleID: original.vehicleID))
             ?? original
-        if rule == baseline { return }
-        try await rules.update(rule)
+        let resolvesUnrecognizedPeriod = draft.unrecognizedPeriod != nil && periodChange == .set
+        if rule == baseline && !resolvesUnrecognizedPeriod { return }
+        try await rules.update(rule, period: periodChange)
     }
 }
 

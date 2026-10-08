@@ -68,6 +68,7 @@ actor FakeRecordRepository: ServiceRecordRepository, ServiceRecordEditing {
 actor FakeVehicleRepository: VehicleRepository {
     private(set) var added: [Vehicle] = []
     private(set) var updated: [Vehicle] = []
+    private(set) var kindChanges: [VehicleKindChange] = []
     private(set) var deleted: [Vehicle.ID] = []
     private var addError: (any Error)?
     private var updateError: (any Error)?
@@ -89,9 +90,10 @@ actor FakeVehicleRepository: VehicleRepository {
         added.append(vehicle)
     }
 
-    func update(_ vehicle: Vehicle) async throws {
+    func update(_ vehicle: Vehicle, kind: VehicleKindChange) async throws {
         if let updateError { throw updateError }
         updated.append(vehicle)
+        kindChanges.append(kind)
     }
 
     func delete(id: Vehicle.ID) async throws {

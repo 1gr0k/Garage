@@ -17,12 +17,18 @@ public struct UpdateVehicle: Sendable {
     /// бросит ошибки полей, пока пользователь их не исправит. Форма показывает эти ошибки сразу при открытии.
     /// - Throws: `VehicleDraft.Errors` (как есть), если черновик не прошёл проверку;
     ///   ошибки репозитория (`RepositoryError.vehicleNotFound` и др.).
+    ///
+    /// Вид: пока `draft.kind == nil` (у машины незнакомый серверный вид и его не выбирали), порту уходит
+    /// `keepUnrecognized`. Явный выбор — `set`, и это изменение, даже если выбран тот же `.car`, которым вид
+    /// показывался (решение 9e плана этапа 12).
     public func execute(draft: VehicleDraft, original: Vehicle, currentYear: Int) async throws {
         let vehicle = try draft.makeVehicle(id: original.id, currentYear: currentYear)
+        let kindChange: VehicleKindChange = draft.kind == nil ? .keepUnrecognized : .set
         let baseline =
             (try? VehicleDraft(vehicle: original).makeVehicle(id: original.id, currentYear: currentYear))
             ?? original
-        if vehicle == baseline { return }
-        try await vehicles.update(vehicle)
+        let resolvesUnrecognizedKind = draft.unrecognizedKind != nil && kindChange == .set
+        if vehicle == baseline && !resolvesUnrecognizedKind { return }
+        try await vehicles.update(vehicle, kind: kindChange)
     }
 }

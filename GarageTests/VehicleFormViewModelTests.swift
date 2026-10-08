@@ -169,6 +169,40 @@ struct VehicleFormViewModelTests {
         #expect(model.recordsMileageHintKm == nil)
     }
 
+    // T7: форма правки машины с незнакомым видом, решение 9e плана этапа 12.
+
+    @Test func editFormOfUnrecognizedKindShowsNoChosenKind() throws {
+        let model = makeModel(mode: .edit(original: try makeOriginal(), unrecognizedKind: "tractor"))
+
+        #expect(model.draft.kind == nil)
+        #expect(model.draft.unrecognizedKind == "tractor")
+        #expect(model.errors.isEmpty)
+    }
+
+    @Test func savingWithoutChoosingAKeepsTheUnrecognizedKind() async throws {
+        let repository = FakeVehicleRepository()
+        let model = makeModel(
+            mode: .edit(original: try makeOriginal(), unrecognizedKind: "tractor"), repository: repository)
+        model.draft.make = "Yamaha"
+
+        #expect(await model.save())
+
+        #expect(await repository.updated.map(\.make) == ["Yamaha"])
+        #expect(await repository.kindChanges == [.keepUnrecognized])
+    }
+
+    /// Положительный контроль: явный выбор вида в форме сбрасывает сырое значение.
+    @Test func savingAfterChoosingAKindSetsIt() async throws {
+        let repository = FakeVehicleRepository()
+        let original = try makeOriginal()
+        let model = makeModel(mode: .edit(original: original, unrecognizedKind: "tractor"), repository: repository)
+        model.draft.kind = original.kind
+
+        #expect(await model.save())
+
+        #expect(await repository.kindChanges == [.set])
+    }
+
     @Test func noHintWithoutRecordsMileage() throws {
         let model = makeModel(mode: .edit(original: try makeOriginal()))
 

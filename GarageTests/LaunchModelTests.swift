@@ -10,7 +10,8 @@ struct LaunchModelTests {
     private func makeDependencies() async throws -> AppDependencies {
         let defaults = UserDefaults(suiteName: "LaunchModelTests-\(UUID().uuidString)")!
         let container = try await AppBootstrap.prepare(inMemory: true, defaults: defaults)
-        return AppDependencies(container: container, credentials: FakeCredentials())
+        return AppDependencies(
+            container: container, credentials: FakeCredentials(), reminderScheduler: DisabledReminderScheduler())
     }
 
     @Test func successfulBootstrapMakesModelReady() async throws {

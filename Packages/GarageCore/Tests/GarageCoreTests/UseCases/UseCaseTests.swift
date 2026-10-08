@@ -251,6 +251,59 @@ private let currentYear = 2026
     }
 }
 
+// MARK: UpdateVehicle: вид, который клиент не знает (решение 9e плана этапа 12)
+
+@Test func updateVehicleOrdinaryEditSetsKind() async throws {
+    let repository = FakeVehicleRepository()
+    let original = Vehicle.samples[0]
+    var draft = VehicleDraft(vehicle: original)
+    draft.model = "Prado"
+
+    try await UpdateVehicle(vehicles: repository).execute(draft: draft, original: original, currentYear: currentYear)
+
+    #expect(repository.kindChanges == [.set])
+}
+
+@Test func updateVehicleWithUnrecognizedKindKeepsItUntilChosen() async throws {
+    let repository = FakeVehicleRepository()
+    let original = Vehicle.samples[0]
+    var draft = VehicleDraft(vehicle: original, unrecognizedKind: "tractor")
+    #expect(draft.kind == nil)
+    draft.make = "Lexus"
+
+    try await UpdateVehicle(vehicles: repository).execute(draft: draft, original: original, currentYear: currentYear)
+
+    #expect(repository.updated.map(\.make) == ["Lexus"])
+    #expect(repository.updated.first?.kind == .car)
+    #expect(repository.kindChanges == [.keepUnrecognized])
+}
+
+@Test func updateVehicleWithUnrecognizedKindAndNoEditsSkipsRepository() async throws {
+    let repository = FakeVehicleRepository()
+    let original = Vehicle.samples[0]
+
+    try await UpdateVehicle(vehicles: repository).execute(
+        draft: VehicleDraft(vehicle: original, unrecognizedKind: "tractor"), original: original,
+        currentYear: currentYear)
+
+    #expect(repository.updated.isEmpty)
+}
+
+/// Положительный контроль к предыдущему: явный выбор `.car` у машины с незнакомым видом — изменение,
+/// хотя домен и так показывал автомобиль.
+@Test func updateVehicleChoosingCarOverUnrecognizedKindIsAChange() async throws {
+    let repository = FakeVehicleRepository()
+    let original = Vehicle.samples[0]
+    #expect(original.kind == .car)
+    var draft = VehicleDraft(vehicle: original, unrecognizedKind: "tractor")
+    draft.kind = .car
+
+    try await UpdateVehicle(vehicles: repository).execute(draft: draft, original: original, currentYear: currentYear)
+
+    #expect(repository.updated == [original])
+    #expect(repository.kindChanges == [.set])
+}
+
 // MARK: RegisterDevice
 
 private let secret = "s3cret-value"

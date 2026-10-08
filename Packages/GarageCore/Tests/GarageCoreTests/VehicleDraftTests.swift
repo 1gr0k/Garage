@@ -35,6 +35,22 @@ private func validDraft() -> VehicleDraft {
     #expect(draft.mileageText == "214000")
 }
 
+@Test func vehicleDraftOfUnrecognizedKindHasNoChosenKindAndStillBuildsACar() throws {
+    let vehicle = Vehicle.samples[2]
+    let draft = VehicleDraft(vehicle: vehicle, unrecognizedKind: "tractor")
+
+    #expect(draft.kind == nil)
+    #expect(draft.unrecognizedKind == "tractor")
+    #expect(try draft.makeVehicle(id: vehicle.id, currentYear: currentYear).kind == .car)
+}
+
+@Test func vehicleDraftWithoutKindAndWithoutUnrecognizedKindRequiresIt() {
+    var draft = validDraft()
+    draft.kind = nil
+
+    #expect(vehicleFieldErrors(draft) == [.kind: .required])
+}
+
 @Test(arguments: ["", "  ", "\u{00A0}"])
 func vehicleDraftRequiresMakeAndModel(text: String) {
     var draft = validDraft()

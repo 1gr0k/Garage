@@ -10,7 +10,8 @@ final class VehicleFormViewModel {
 
     enum Mode {
         case add
-        case edit(original: Vehicle)
+        /// `unrecognizedKind` — исходный вид, который клиент не знает: форма открывается без выбранного вида.
+        case edit(original: Vehicle, unrecognizedKind: String? = nil)
     }
 
     var draft: VehicleDraft
@@ -44,8 +45,8 @@ final class VehicleFormViewModel {
         switch mode {
         case .add:
             draft = VehicleDraft()
-        case .edit(let original):
-            draft = VehicleDraft(vehicle: original)
+        case .edit(let original, let unrecognizedKind):
+            draft = VehicleDraft(vehicle: original, unrecognizedKind: unrecognizedKind)
             // Машина из синхронизации может не пройти проверку черновика, а `UpdateVehicle` не сохранит её,
             // пока поля не исправлены: ошибки видны сразу.
             do {
@@ -84,7 +85,7 @@ final class VehicleFormViewModel {
             switch mode {
             case .add:
                 try await addVehicle.execute(draft: draft, currentYear: currentYear())
-            case .edit(let original):
+            case .edit(let original, _):
                 try await updateVehicle.execute(draft: draft, original: original, currentYear: currentYear())
             }
             return true

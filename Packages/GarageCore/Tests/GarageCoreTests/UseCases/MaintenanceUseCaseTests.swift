@@ -78,6 +78,78 @@ private func validDraft() -> MaintenanceRuleDraft {
     #expect(repository.updated.isEmpty)
 }
 
+// Сырой незнакомый период (`"weeks:2"`) живёт, пока поля интервала по времени не тронуты явно
+// (решение 9e плана этапа 12, открытый вопрос S).
+
+private func ruleWithUnrecognizedPeriod() throws -> MaintenanceRule {
+    try makeRule(period: nil, distanceKm: 10_000)
+}
+
+@Test func updateRuleKeepsUnrecognizedPeriodWhileTheFieldIsUntouched() async throws {
+    let repository = FakeRuleRepository()
+    let original = try ruleWithUnrecognizedPeriod()
+    var draft = MaintenanceRuleDraft(rule: original, unrecognizedPeriod: "weeks:2")
+    draft.distanceText = "15000"
+
+    try await UpdateMaintenanceRule(rules: repository).execute(draft: draft, original: original)
+
+    #expect(repository.updated.map(\.distanceKm) == [15_000])
+    #expect(repository.periodChanges == [.keepUnrecognized])
+}
+
+@Test func updateRuleWithUnrecognizedPeriodAndNoEditsSkipsRepository() async throws {
+    let repository = FakeRuleRepository()
+    let original = try ruleWithUnrecognizedPeriod()
+
+    try await UpdateMaintenanceRule(rules: repository).execute(
+        draft: MaintenanceRuleDraft(rule: original, unrecognizedPeriod: "weeks:2"), original: original)
+
+    #expect(repository.updated.isEmpty)
+}
+
+/// Положительный контроль: любое явное действие с полем интервала по времени снимает «не изменён» — даже если
+/// итоговое правило равно исходному (период включили и выключили).
+@Test func updateRuleTouchingThePeriodFieldClearsTheRawPeriodEvenWithoutChangingTheRule() async throws {
+    let repository = FakeRuleRepository()
+    let original = try ruleWithUnrecognizedPeriod()
+    var draft = MaintenanceRuleDraft(rule: original, unrecognizedPeriod: "weeks:2")
+    draft.usesPeriod = true
+    draft.usesPeriod = false
+    #expect(!draft.keepsUnrecognizedPeriod)
+
+    try await UpdateMaintenanceRule(rules: repository).execute(draft: draft, original: original)
+
+    #expect(repository.updated == [original])
+    #expect(repository.periodChanges == [.set])
+}
+
+@Test func updateRuleSettingAKnownPeriodReplacesTheRawOne() async throws {
+    let repository = FakeRuleRepository()
+    let original = try ruleWithUnrecognizedPeriod()
+    var draft = MaintenanceRuleDraft(rule: original, unrecognizedPeriod: "weeks:2")
+    draft.usesPeriod = true
+    draft.periodValueText = "6"
+    draft.periodUnit = .months
+
+    try await UpdateMaintenanceRule(rules: repository).execute(draft: draft, original: original)
+
+    #expect(repository.updated.map(\.period) == [.months(6)])
+    #expect(repository.periodChanges == [.set])
+}
+
+/// Правка без сырого периода: поле «не тронуто» не существует, порт всегда получает `set`.
+@Test func updateRuleWithoutRawPeriodAlwaysSets() async throws {
+    let repository = FakeRuleRepository()
+    let original = try makeRule(period: .months(12))
+    var draft = MaintenanceRuleDraft(rule: original)
+    #expect(!draft.keepsUnrecognizedPeriod)
+    draft.periodValueText = "6"
+
+    try await UpdateMaintenanceRule(rules: repository).execute(draft: draft, original: original)
+
+    #expect(repository.periodChanges == [.set])
+}
+
 @Test func updateRulePropagatesRuleNotFound() async throws {
     let repository = FakeRuleRepository()
     let original = try makeRule()

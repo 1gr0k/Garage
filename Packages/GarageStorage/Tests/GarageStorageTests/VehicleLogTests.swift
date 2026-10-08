@@ -73,7 +73,7 @@ private struct Boom: Error {}
         let (container, vehicle) = try makeVehicleStore(synced: true)
         let changed = try edited(vehicle)
 
-        try VehicleLog.update(changed, in: container)
+        try VehicleLog.update(changed, kind: .set, in: container)
 
         #expect(try #require(try storedVehicle(vehicle.id, in: container)).toDomain() == changed)
         let pending = try await pendingChanges(container)
@@ -84,11 +84,11 @@ private struct Boom: Error {}
 
     @Test func twoUpdatesCollapseKeepingBaseVersion() async throws {
         let (container, vehicle) = try makeVehicleStore(synced: true)
-        try VehicleLog.update(try edited(vehicle, make: "A"), in: container)
+        try VehicleLog.update(try edited(vehicle, make: "A"), kind: .set, in: container)
         let first = try await pendingChanges(container)
         let last = try edited(vehicle, make: "B")
 
-        try VehicleLog.update(last, in: container)
+        try VehicleLog.update(last, kind: .set, in: container)
 
         let pending = try await pendingChanges(container)
         #expect(pending.count == 1)
@@ -102,7 +102,7 @@ private struct Boom: Error {}
         let other = try edited(Vehicle.samples[1])
 
         #expect(throws: ServiceLogError.vehicleNotFound(other.id)) {
-            try VehicleLog.update(other, in: container)
+            try VehicleLog.update(other, kind: .set, in: container)
         }
         #expect(try await pendingChanges(container).isEmpty)
         #expect(try #require(try storedVehicle(vehicle.id, in: container)).make == vehicle.make)
