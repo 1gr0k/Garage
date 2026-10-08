@@ -11,7 +11,8 @@
 #   scripts/check.sh --test GarageStorage|app|ui <Target/Suite/test>         one `xcodebuild -only-testing`
 #                                                                           (ui: language from $UI_LANG, default en)
 # The full output of every section (and of --test) also goes to .build/check-logs/<section>.log
-# (test-<target>.log for --test); the path is printed at the end. The exit code is that of the check.
+# (test-<target>.log for --test); the path is printed at the end. The exit code is that of the check;
+# --test also fails when the filter matched no test.
 # Stops at the first failure and reports which section failed.
 # New local package: add it to `linux` (swift test) or `ios` (xcodebuild test).
 set -euo pipefail
@@ -372,6 +373,14 @@ run_logged() {
     code=${PIPESTATUS[0]}
     set -e
     echo "check.sh: log: $log"
+    # `--test`: фильтр без совпадений даёт код 0 и «пустой» успех. Тесты были, если в логе есть
+    # итог Swift Testing («Test run with N tests») или XCTest («Executed N tests») с N > 0;
+    # `Executed 0 tests` встречается и в нормальном прогоне Swift Testing, поэтому по нему одному нельзя.
+    if [[ "$code" -eq 0 && -n "$test_target" ]] \
+        && ! grep -qE 'Test run with [1-9][0-9]* tests?|Executed [1-9][0-9]* tests?' "$log"; then
+        echo "check.sh: фильтр не нашёл ни одного теста" >&2
+        code=1
+    fi
     return "$code"
 }
 
