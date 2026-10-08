@@ -38,6 +38,12 @@ nonisolated struct UserNotificationsReminderScheduler: ReminderScheduling {
     /// (повторный `add` с тем же id заменил бы запрос, проба 0.5, но сбивал бы системную очередь).
     func replaceAll(with reminders: [ScheduledReminder]) async throws {
         let center = UNUserNotificationCenter.current()
+        #if DEBUG
+            let settings = await center.notificationSettings()
+            logger.info(
+                "Settings: status=\(settings.authorizationStatus.rawValue) alert=\(settings.alertSetting.rawValue) center=\(settings.notificationCenterSetting.rawValue) lock=\(settings.lockScreenSetting.rawValue)"
+            )
+        #endif
         // Тексты берёт `ServiceType.title` — он живёт на главном акторе, как и весь слой форматирования приложения.
         let requests = await MainActor.run { reminders.map(Self.makeRequest) }
         let wanted = Dictionary(requests.map { ($0.identifier, $0) }, uniquingKeysWith: { $1 })
