@@ -56,9 +56,15 @@ struct StoredRecord: Hashable, Sendable {
     var extras: RecordSyncExtras
 }
 
+struct StoredRule: Hashable, Sendable {
+    var rule: MaintenanceRule
+    var extras: RuleSyncExtras
+}
+
 actor InMemorySyncStore: SyncStore {
     private(set) var vehicles: [UUID: Vehicle] = [:]
     private(set) var records: [UUID: StoredRecord] = [:]
+    private(set) var rules: [UUID: StoredRule] = [:]
     private var versions: [EntityRef: Int64] = [:]
     private var queue: [PendingChange] = []
     private var storedCursor: String?
@@ -87,6 +93,7 @@ actor InMemorySyncStore: SyncStore {
 
     func vehicle(_ id: UUID) -> Vehicle? { vehicles[id] }
     func stored(_ id: UUID) -> StoredRecord? { records[id] }
+    func storedRule(_ id: UUID) -> StoredRule? { rules[id] }
 
     private func enqueue(_ operation: LocalOperation, modifiedAt: Date, changeID: UUID) {
         let ref = operation.ref
@@ -105,6 +112,7 @@ actor InMemorySyncStore: SyncStore {
         switch entity {
         case .vehicle(let vehicle): vehicles[vehicle.id] = vehicle
         case .serviceRecord(let record, let extras): records[record.id] = StoredRecord(record: record, extras: extras)
+        case .maintenanceRule(let rule, let extras): rules[rule.id] = StoredRule(rule: rule, extras: extras)
         }
     }
 
@@ -112,6 +120,7 @@ actor InMemorySyncStore: SyncStore {
         switch ref.kind {
         case .vehicle: vehicles[ref.id] = nil
         case .serviceRecord: records[ref.id] = nil
+        case .maintenanceRule: rules[ref.id] = nil
         }
     }
 
@@ -146,21 +155,24 @@ actor InMemorySyncStore: SyncStore {
         switch change.operation {
         case .upsert(let entity): write(entity)
         case .delete(let ref):
-            if ref.kind == .vehicle { dropRecords(ofVehicle: ref.id) }
+            if ref.kind == .vehicle { dropChildren(ofVehicle: ref.id) }
             remove(ref)
         }
         if let version = change.version { versions[ref] = version }
         queue.removeAll { $0.operation.ref == ref }
     }
 
-    /// Каскад, как требует контракт `SyncStore.apply`: записи машины удаляются вместе с pending-upsert'ами.
-    /// Условие `!isDelete` защитное: у записи с pending-delete сущности уже нет, в `records` её не найти.
-    private func dropRecords(ofVehicle id: UUID) {
-        let recordIDs = records.values.filter { $0.record.vehicleID == id }.map(\.record.id)
-        for recordID in recordIDs {
-            let recordRef = EntityRef(kind: .serviceRecord, id: recordID)
-            remove(recordRef)
-            queue.removeAll { $0.operation.ref == recordRef && !$0.operation.isDelete }
+    /// Каскад, как требует контракт `SyncStore.apply`: записи и правила машины удаляются вместе с pending-upsert'ами.
+    /// Условие `!isDelete` защитное: у дочерней сущности с pending-delete самой сущности уже нет, её не найти.
+    private func dropChildren(ofVehicle id: UUID) {
+        let children =
+            records.values.filter { $0.record.vehicleID == id }.map {
+                EntityRef(kind: .serviceRecord, id: $0.record.id)
+            }
+            + rules.values.filter { $0.rule.vehicleID == id }.map { EntityRef(kind: .maintenanceRule, id: $0.rule.id) }
+        for childRef in children {
+            remove(childRef)
+            queue.removeAll { $0.operation.ref == childRef && !$0.operation.isDelete }
         }
     }
 
@@ -184,6 +196,8 @@ enum IDs {
     static let vehicle = uuid("11111111-1111-4111-8111-111111111111")
     static let record = uuid("22222222-2222-4222-8222-222222222222")
     static let deletedRecord = uuid("33333333-3333-4333-8333-333333333333")
+    static let rule = uuid("88888888-8888-4888-8888-888888888888")
+    static let otherRule = uuid("88888888-8888-4888-8888-888888888889")
     static let orphanRecord = uuid("77777777-7777-4777-8777-777777777777")
     static let missingVehicle = uuid("99999999-9999-4999-8999-999999999999")
     static let changeA = uuid("AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA")
@@ -205,6 +219,15 @@ func makeRecord(
     try! ServiceRecord(
         id: id, vehicleID: vehicleID, date: date("2026-10-01T00:00:00.000Z"), mileageKm: 87_000,
         serviceType: serviceType, laborCost: Money(kopecks: laborKopecks), notes: notes)
+}
+
+func makeRule(
+    id: UUID = IDs.rule, vehicleID: UUID = IDs.vehicle, serviceType: ServiceType = .oilChange,
+    period: ServicePeriod? = .months(12), distanceKm: Int? = 10_000
+) -> MaintenanceRule {
+    try! MaintenanceRule(
+        id: id, vehicleID: vehicleID, serviceType: serviceType, period: period, distanceKm: distanceKm,
+        start: MaintenanceStart(date: date("2026-10-08T00:00:00.000Z"), mileageKm: 87_400))
 }
 
 func makeClient(_ transport: FakeHTTPTransport) -> SyncAPIClient {

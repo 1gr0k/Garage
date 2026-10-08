@@ -9,7 +9,7 @@ final class EntityRow: Model, @unchecked Sendable {
     @ID(key: .id) var id: UUID?
     @Field(key: "kind") var kind: String
     @Field(key: "entity_id") var entityID: UUID
-    /// Owning vehicle of a service record: used for the delete cascade.
+    /// Машина-владелец записи или правила: нужна для каскада при удалении.
     @OptionalField(key: "vehicle_id") var vehicleID: UUID?
     @Field(key: "version") var version: Int64
     /// Exact milliseconds since 1970, so the value survives the exchange unchanged.
@@ -55,6 +55,7 @@ final class EntityRow: Model, @unchecked Sendable {
             switch entityKind {
             case .vehicle: .vehicle(try decoder.decode(VehicleDTO.self, from: data))
             case .serviceRecord: .serviceRecord(try decoder.decode(ServiceRecordDTO.self, from: data))
+            case .maintenanceRule: .maintenanceRule(try decoder.decode(MaintenanceRuleDTO.self, from: data))
             }
         return ServerChange(version: version, modifiedAt: modifiedAt, operation: .upsert(payload))
     }

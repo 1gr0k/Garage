@@ -392,4 +392,59 @@ private actor DeleteDuringPushTransport: HTTPTransport {
         #expect(try await store.pendingChanges().isEmpty)
         #expect(await server.liveCount(.vehicle) == 0)
     }
+
+    /// Заглушка части S: правило, пришедшее с сервера, попадает в `skipped`, а синхронизация машин и записей
+    /// не ломается и курсор идёт дальше. Модель правил и их хранение — часть B этапа 12.
+    @Test func pulledMaintenanceRuleIsSkippedWithoutBreakingTheRest() async throws {
+        let server = FakeSyncServer()
+        let other = try Device()
+        let vehicle = Vehicle.samples[0]
+        try VehicleLog.add(vehicle, in: other.container)
+        try ServiceLog.add(
+            makeSyncRecord(for: vehicle, notes: "Заменено масло"), receiptImage: nil, toVehicleWithID: vehicle.id,
+            in: other.container)
+        _ = try await other.sync(with: server)
+        let rule = try MaintenanceRule(
+            vehicleID: vehicle.id, serviceType: .oilChange, period: .months(12), distanceKm: 10_000,
+            start: MaintenanceStart(date: Date(timeIntervalSince1970: 1_790_000_000), mileageKm: 87_400))
+        let pushed = try await SyncAPIClient(transport: server, token: "t").push(
+            PushRequest(changes: [
+                PushChange(
+                    changeID: UUID(), baseVersion: nil, modifiedAt: Date(timeIntervalSince1970: 1_790_000_000),
+                    operation: .upsert(SyncEntity.maintenanceRule(rule, RuleSyncExtras()).payload))
+            ]))
+        #expect(pushed.results.count == 1)
+        #expect(await server.liveCount(.maintenanceRule) == 1)
+
+        let device = try Device()
+        let report = try await device.sync(with: server)
+
+        #expect(report.skipped.map { $0.ref } == [EntityRef(kind: .maintenanceRule, id: rule.id)])
+        #expect(report.pulled == 2)
+        #expect(try device.vehicles().map(\.id) == [vehicle.id])
+        #expect(try device.records().count == 1)
+        #expect(try await device.store.cursor() != nil)
+        let again = try await device.sync(with: server)
+        #expect(again.pulled == 0 && again.skipped.isEmpty)
+    }
+
+    /// Вид правила приходит и в удалении: no-op, ничего не ломает и не оставляет в очереди.
+    @Test func pulledMaintenanceRuleTombstoneIsHarmless() async throws {
+        let server = FakeSyncServer()
+        let ruleID = UUID()
+        let client = SyncAPIClient(transport: server, token: "t")
+        _ = try await client.push(
+            PushRequest(changes: [
+                PushChange(
+                    changeID: UUID(), baseVersion: nil, modifiedAt: Date(timeIntervalSince1970: 1_790_000_000),
+                    operation: .delete(.maintenanceRule, id: ruleID))
+            ]))
+
+        let device = try Device()
+        let report = try await device.sync(with: server)
+
+        #expect(report.skipped.isEmpty)
+        #expect(try await device.store.pendingChanges().isEmpty)
+        #expect(try await device.store.version(of: EntityRef(kind: .maintenanceRule, id: ruleID)) == 1)
+    }
 }

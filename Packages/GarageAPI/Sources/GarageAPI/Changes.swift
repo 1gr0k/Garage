@@ -5,6 +5,16 @@ import Foundation
 public enum EntityKind: String, Hashable, Sendable, Codable, CaseIterable {
     case vehicle
     case serviceRecord
+    case maintenanceRule
+
+    /// Дочерняя сущность машины: при удалении машины сервер ставит ей tombstone, а `rejected/vehicleNotFound`
+    /// означает, что клиент удаляет её локально. Исчерпывающий `switch`: новый вид обязан определиться.
+    public var isVehicleChild: Bool {
+        switch self {
+        case .vehicle: false
+        case .serviceRecord, .maintenanceRule: true
+        }
+    }
 }
 
 /// Изменение с сервера, у которого `entity` или `op` клиенту незнакомы. Это не нарушение формата:
@@ -38,11 +48,13 @@ private enum Tolerant<Element: Decodable>: Decodable {
 public enum EntityPayload: Hashable, Sendable {
     case vehicle(VehicleDTO)
     case serviceRecord(ServiceRecordDTO)
+    case maintenanceRule(MaintenanceRuleDTO)
 
     public var kind: EntityKind {
         switch self {
         case .vehicle: .vehicle
         case .serviceRecord: .serviceRecord
+        case .maintenanceRule: .maintenanceRule
         }
     }
 
@@ -50,6 +62,7 @@ public enum EntityPayload: Hashable, Sendable {
         switch self {
         case .vehicle(let dto): dto.id
         case .serviceRecord(let dto): dto.id
+        case .maintenanceRule(let dto): dto.id
         }
     }
 }
@@ -75,6 +88,7 @@ extension ChangeOperation {
             switch payload {
             case .vehicle(let dto): try container.encode(dto, forKey: .data)
             case .serviceRecord(let dto): try container.encode(dto, forKey: .data)
+            case .maintenanceRule(let dto): try container.encode(dto, forKey: .data)
             }
         case .delete(let kind, let id):
             try container.encode("delete", forKey: .op)
@@ -97,6 +111,8 @@ extension ChangeOperation {
                 self = .upsert(.vehicle(try container.decode(VehicleDTO.self, forKey: .data)))
             case .serviceRecord:
                 self = .upsert(.serviceRecord(try container.decode(ServiceRecordDTO.self, forKey: .data)))
+            case .maintenanceRule:
+                self = .upsert(.maintenanceRule(try container.decode(MaintenanceRuleDTO.self, forKey: .data)))
             }
         case "delete":
             self = .delete(kind, id: try container.decode(UUID.self, forKey: .id))

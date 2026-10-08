@@ -17,8 +17,9 @@ public protocol SyncStore: Sendable {
     func rebase(changeID: UUID, onto version: Int64) async throws
     /// Writes or deletes the entity, remembers the version (a deleted entity keeps its tombstone version,
     /// so an older upsert from pull cannot resurrect it) and drops the entity's pending edit.
-    /// Удаление машины удаляет её записи и pending-upsert'ы этих записей; pending-delete записей остаются
-    /// (на сервере каскад делает tombstones записей сам, а upsert записи к удалённой машине был бы отклонён).
+    /// Удаление машины удаляет её записи и правила и pending-upsert'ы этих записей и правил; pending-delete
+    /// остаются (на сервере каскад делает tombstones сам, а upsert дочерней сущности к удалённой машине был бы
+    /// отклонён).
     func apply(_ change: RemoteChange, for ref: EntityRef) async throws
     /// Drops the change from the queue without touching data.
     func discard(changeID: UUID) async throws

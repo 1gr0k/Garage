@@ -50,9 +50,6 @@ public struct ReceiptRefDTO: Hashable, Sendable, Codable {
 /// Правило обслуживания машины. `serviceType` — `ServiceType.storageString` (терпимое чтение, как у записи),
 /// `period` — `"days:<N>"` / `"months:<N>"`; незнакомое значение хранится сырым, разбор в домен — в потребителе.
 /// Отсутствующие необязательные ключи вместо `null`, как у записи.
-///
-/// `EntityKind.maintenanceRule` и `EntityPayload.maintenanceRule` появятся вместе с сервером (этап 12, часть S):
-/// новый вид сущности нельзя добавить, не меняя исчерпывающие `switch` сервера и клиента.
 public struct MaintenanceRuleDTO: Hashable, Sendable, Codable {
     public var id: UUID
     public var vehicleID: UUID

@@ -5,6 +5,9 @@ import GarageSync
 /// A stateful stand-in for the server with just enough of `/v1/changes` and `/v1/receipts`
 /// (versions, `baseVersion` checks, pull by version) to run the real `SyncEngine` against it.
 ///
+/// Содержимое DTO не валидируется (в отличие от `DTOValidation` сервера): незнакомый `period` правила здесь
+/// принимается, настоящий сервер ответил бы `rejected/validationFailed`.
+///
 /// Удаление повторяет `ChangeWriter.delete` (Server/Sources/App/ChangeWriter.swift): delete никогда не
 /// отклоняется и не конфликтует, несуществующий id получает tombstone, повторное удаление возвращает
 /// версию существующего tombstone, а удаление машины каскадно ставит tombstones её живых записей.
@@ -139,20 +142,32 @@ actor FakeSyncServer: HTTPTransport {
             return .rejected(APIError(code: .validationFailed, message: "unknown base version"))
         }
         var ownerID: UUID?
-        if case .serviceRecord(let record) = payload {
-            guard rows[Key(kind: .vehicle, id: record.vehicleID)].map({ !$0.change.operation.isDelete }) == true else {
+        switch payload {
+        case .vehicle:
+            break
+        case .serviceRecord(let record):
+            guard hasLiveVehicle(record.vehicleID) else {
                 return .rejected(APIError(code: .vehicleNotFound, message: "no vehicle"))
             }
             if let receipt = record.receipt, blobs[receipt.sha256] == nil {
                 return .rejected(APIError(code: .receiptNotFound, message: "no blob"))
             }
             ownerID = record.vehicleID
+        case .maintenanceRule(let rule):
+            guard hasLiveVehicle(rule.vehicleID) else {
+                return .rejected(APIError(code: .vehicleNotFound, message: "no vehicle"))
+            }
+            ownerID = rule.vehicleID
         }
         let version = nextVersion()
         rows[key] = Row(
             change: ServerChange(version: version, modifiedAt: change.modifiedAt, operation: change.operation),
             vehicleID: ownerID, lastChangeID: change.changeID)
         return .applied(version: version)
+    }
+
+    private func hasLiveVehicle(_ id: UUID) -> Bool {
+        rows[Key(kind: .vehicle, id: id)].map { !$0.change.operation.isDelete } == true
     }
 
     /// Как `ChangeWriter.delete`: `baseVersion` не проверяется, конфликтов нет. Строки нет — tombstone без
@@ -172,14 +187,14 @@ actor FakeSyncServer: HTTPTransport {
         let version = nextVersion()
         tombstone(key, version: version, change: change)
         if kind == .vehicle {
-            let records =
+            let children =
                 rows
                 .filter {
-                    $0.key.kind == .serviceRecord && $0.value.vehicleID == id && !$0.value.change.operation.isDelete
+                    $0.key.kind.isVehicleChild && $0.value.vehicleID == id && !$0.value.change.operation.isDelete
                 }
                 .sorted { $0.value.change.version < $1.value.change.version }
-            for (recordKey, _) in records {
-                tombstone(recordKey, version: nextVersion(), change: change)
+            for (childKey, _) in children {
+                tombstone(childKey, version: nextVersion(), change: change)
             }
         }
         return .applied(version: version)

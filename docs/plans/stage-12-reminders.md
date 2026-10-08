@@ -578,22 +578,28 @@
 `Packages/GarageSync/Sources` совпал с таблицей 9a — новых мест нет (`APICoding.swift:45` — формат даты,
 остаётся строгим).
 
-**Проверка на зубы** (временно вернул строгость, прогон через `check-runner`, затем откат `git checkout`):
+**Проверка на зубы** (по одному декодеру: временно вернул строгость только ему, прогон `GarageAPI` и `GarageSync`
+через `check-runner`, затем откат правкой; повторена в PR 12 отдельными прогонами, по одному на мутацию):
 
-| Декодер | Упавшие тесты при строгости |
-|---|---|
-| T1/T2 (`Tolerant` без перехвата `UnrecognizedChange`) | `GoldenTests.goldenExampleRoundTrips` (кейсы `pull-response-unknown-entity`, `pull-response-unknown-op`), `unknownEntityAndOpAreSkippedBetweenKnownChanges`; GarageSync: `pullSkipsUnknownEntityAndOpAndKeepsCursor` |
-| T3 (`status` → `throw`) | `goldenExampleRoundTrips` (`push-response-unknown-status`), `unknownPushStatusBecomesUnrecognized`; GarageSync: `unrecognizedPushStatusKeepsChangeQueuedAndResendsItWithSameChangeID`, `unrecognizedPushStatusDoesNotBlockNeighbours`, `unrecognizedChangeIsNotResentInLaterRoundsOfTheSameRun` |
-| T4 (`current` без перехвата) | `conflictWithUnrecognizedCurrentBecomesUnrecognized`; GarageSync: `conflictWithUnrecognizedCurrentKeepsChangeQueued` |
-| T5 (`ConflictReason` бросает на `.unknown`) | `goldenExampleRoundTrips` (`push-response-unknown-conflict-reason`), `unknownConflictReasonBecomesUnknown`; GarageSync: `unknownConflictReasonIsResolvedFromCurrent` |
-| T6 (`APIErrorCode` бросает на `.unknown`) | `goldenExampleRoundTrips` (`push-response-unknown-error-code`), `unknownErrorCodeBecomesUnknown`; GarageSync: `rejectedWithUnknownCodeTakesTheGeneralBranch` |
-| T8 (`ServiceRecord.decoded(from:)` без `.other`) | GarageSync: `unknownServiceTypeIsKeptAndSentBack`, `goldenUnknownServiceTypeIsReadAsOtherAndSentBackUnchanged`, `unknownServiceTypeSurvivesLocalEdit` |
+| Декодер | Мутация | Упавшие тесты |
+|---|---|---|
+| T1 (`entity`) | `ChangeOperation.init(tolerantFrom:)`: вместо `UnrecognizedChange("entity:…")` — `DecodingError` | GarageAPI: `unknownEntityAndOpAreSkippedBetweenKnownChanges`, `maintenanceRuleIsKnownWhileFutureEntityIsStillSkipped`, `goldenExampleRoundTrips` (`pull-response-unknown-entity`, `push-response-unknown-status`), `conflictWithUnrecognizedCurrentBecomesUnrecognized`; GarageSync: `pullSkipsUnknownEntityAndOpAndKeepsCursor`, `skippedUnrecognizedIsNotCountedTwiceAfterCursorExpired`, `conflictWithUnrecognizedCurrentKeepsChangeQueued` |
+| T2 (`op`) | то же для `UnrecognizedChange("op:…")` | GarageAPI: `unknownEntityAndOpAreSkippedBetweenKnownChanges`, `goldenExampleRoundTrips` (`pull-response-unknown-op`), `conflictWithUnrecognizedCurrentBecomesUnrecognized`; GarageSync: `pullSkipsUnknownEntityAndOpAndKeepsCursor` |
+| T3 (`status`) | `PushResult`: ветка `default` бросает `DecodingError` вместо `.unrecognized` | GarageAPI: `unknownPushStatusBecomesUnrecognized`, `goldenExampleRoundTrips` (`push-response-unknown-status`); GarageSync: `unrecognizedPushStatusKeepsChangeQueuedAndResendsItWithSameChangeID`, `unrecognizedPushStatusDoesNotBlockNeighbours`, `unrecognizedChangeIsNotResentInLaterRoundsOfTheSameRun` |
+| T4 (`current` в `conflict`) | `PushResult`: перехват `UnrecognizedChange` заменён на `DecodingError` | GarageAPI: `conflictWithUnrecognizedCurrentBecomesUnrecognized`, `goldenExampleRoundTrips` (`push-response-unknown-status`); GarageSync: `conflictWithUnrecognizedCurrentKeepsChangeQueued` |
+| T5 (`reason`) | `ConflictReason.init(from:)` бросает на `.unknown` | GarageAPI: `unknownConflictReasonBecomesUnknown`, `goldenExampleRoundTrips` (`push-response-unknown-conflict-reason`); GarageSync: `unknownConflictReasonIsResolvedFromCurrent` |
+| T6 (`code`) | `APIErrorCode.init(from:)` бросает на `.unknown` | GarageAPI: `unknownErrorCodeBecomesUnknown`, `goldenExampleRoundTrips` (`push-response-unknown-error-code`); GarageSync: `rejectedWithUnknownCodeTakesTheGeneralBranch` |
+| T8 (`serviceType` записи) | `ServiceRecord.decoded(from:)`: `catch { throw error }` вместо `.other` + `rawServiceType` | GarageSync: `unknownServiceTypeIsKeptAndSentBack`, `goldenUnknownServiceTypeIsReadAsOtherAndSentBackUnchanged`, `unknownServiceTypeSurvivesLocalEdit`; GarageAPI не падает (декодера `serviceType` там нет, DTO хранит строку) |
 | Движок: `unrecognized` → `discard` вместо «оставить в очереди» | GarageSync: `unrecognizedPushStatusKeepsChangeQueuedAndResendsItWithSameChangeID`, `unrecognizedPushStatusDoesNotBlockNeighbours`, `unrecognizedChangeIsNotResentInLaterRoundsOfTheSameRun`, `conflictWithUnrecognizedCurrentKeepsChangeQueued` |
 | Движок: без фильтра «не слать повторно в том же прогоне» | GarageSync: `unrecognizedChangeIsNotResentInLaterRoundsOfTheSameRun` (единственный) |
 
-Мутации T1–T6 и T8 применялись **одним прогоном** (затем движок — двумя отдельными), поэтому тест, ронявшийся
-по нескольким причинам сразу, указан у всех подходящих декодеров; у каждого есть хотя бы один тест, который
-падает по его причине (имена в названии теста и в golden-кейсе).
+Каждая мутация применялась отдельно. У каждого декодера есть собственный тест, названный по нему: T1 —
+`pull-response-unknown-entity`; T2 — `pull-response-unknown-op` (ни при какой другой мутации не падает); T3 —
+`unknownPushStatusBecomesUnrecognized`; T4 — `conflictWithUnrecognizedCurrentBecomesUnrecognized`; T5 —
+`unknownConflictReasonBecomesUnknown`; T6 — `unknownErrorCodeBecomesUnknown`; T8 — тесты маппинга записи в
+GarageSync. Новых тестов не потребовалось. Пересечения неизбежны, потому что декодеры вложены: T1 и T2 разбирают
+и `current` внутри `conflict`, поэтому их мутации роняют ещё и тесты T4. Две строки про движок ниже — результат
+прежних отдельных прогонов части A.
 
 T9 (`period` правила) в A — строка в DTO без декодера, поэтому зубов в A нет; тест маппинга и его проверка на
 зубы — в S. T7 — в B.
@@ -674,6 +680,45 @@ T9 (`period` правила) в A — строка в DTO без декодер�
   `ContractTripwireTests` (решение 9d) со снимками для 2 и 3.
   Тест: pull с правилом не ломает синхронизацию записей, правило в `skipped`.
 - Проверка: `scripts/check.sh` целиком (через `check-runner`), включая `ios`.
+
+### Итоги реализации части S (2026-10-08)
+
+Сделано по плану: `EntityKind.maintenanceRule` / `EntityPayload.maintenanceRule` (GarageAPI), сервер (`Validation`,
+`ChangeWriter.upsert` и каскад, `EntityRow.toServerChange`), GarageSync (`RuleSyncExtras`, `SyncEntity.maintenanceRule`,
+маппинг, `vehicleNotFound` для правил, контракт `SyncStore.apply`), заглушка в GarageStorage, `schemaVersion` 2 → 3,
+`ContractTripwireTests`.
+
+**Миграция сервера не нужна:** таблица `entities` общая, `kind` — свободная строка без enum/CHECK
+(`Migrations.swift`, `CreateEntities`), `vehicle_id` уже есть.
+
+**Проверка на зубы** (временные мутации, откат правкой, `git diff` без остатков):
+
+| Мутация | Упавшие тесты |
+|---|---|
+| Фиктивный `case futureProbe` в `EntityKind` (с ветками в исчерпывающих `switch`), `schemaVersion` не менялась | `ContractTripwireTests.entityKindsMatchTheSnapshotOfTheCurrentSchemaVersion` с сообщением «Изменился набор EntityKind: увеличь GarageStore.schemaVersion и добавь снимок…» (снимок `[vehicle, serviceRecord, maintenanceRule]`, сейчас `[…, futureProbe]`); два других теста набора зелёные |
+| T9: сырой `period` не сохраняется (`extras.rawPeriod` не ставится) | `unknownPeriodIsKeptRawAndSentBackWhileDistanceRemains`, `unknownPeriodAndTypeSurviveLocalEdit`, `periodOutOfRangeFailsWhileNonCanonicalStaysRaw` |
+| Движок: `vehicleNotFound` только для `.serviceRecord` | `vehicleNotFoundDeletesRuleLocally` |
+
+Мутации T9 и движка применялись одним прогоном, тест, упавший по нескольким причинам, указан у подходящей.
+
+**Отклонения и решения:**
+
+1. **`period` вне границ (`"months:999"`) — не T9.** Сырым хранится только незнакомый формат
+   (`ValidationError.unknownPeriod`, включая неканоничные `"days:+5"`); известный формат вне границ — нарушение
+   формата, правило пропускается (`skipped`) по принципу «Не трогаем» решения 9a. Сервер отвергает и то, и другое.
+2. **`EntityKind.isVehicleChild`** (GarageAPI, исчерпывающий `switch`) и `SyncEntity.parentVehicleID` (GarageSync) —
+   общее место для «дочерней сущности машины»: каскад сервера, `vehicleNotFound` и `rejectedVehicles` движка не
+   перечисляют виды вручную.
+3. **Заглушка GarageStorage:** upsert правила → `SyncStoreError(cannotApply: StorageMappingError.unsupportedEntity)`
+   (правило в `skipped`, курсор идёт дальше), delete правила — no-op с запоминанием версии (после роста `schemaVersion`
+   в B версии без pending сбрасываются).
+4. `RuleSyncExtras.rawPeriod` уходит на сервер, пока `rule.period == nil`. **Открытый вопрос B:** как отличить
+   «пользователь убрал интервал по времени» от «не трогал» (аналог решения 9e для вида машины): адаптер должен сбрасывать
+   `rawPeriod` только по явному действию в форме.
+5. `FakeSyncServer` (тесты GarageStorage) не валидирует содержимое DTO, в отличие от сервера; задокументировано в
+   комментарии. Тест T9 «сырой период уходит на сервер» в B нужно гнать против правил валидации (или дополнить фейк).
+6. Каскад удаления машины для правил проверен на `InMemorySyncStore` (контракт); на реальном `SwiftDataSyncStore`
+   правил ещё нет — тест каскада SwiftData остаётся в B1.
 
 ---
 

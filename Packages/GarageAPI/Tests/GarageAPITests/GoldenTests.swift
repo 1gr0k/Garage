@@ -305,6 +305,43 @@ private let goldenCases: [GoldenCase] = [
         #expect(response.cursor == "9")
     }
 
+    private static let ruleDTO = MaintenanceRuleDTO(
+        id: uuid("88888888-8888-4888-8888-888888888888"), vehicleID: vehicleID, serviceType: "oilChange",
+        period: "months:12", distanceKm: 10_000, startDate: date("2026-10-08T00:00:00.000Z"), startMileageKm: 87_400)
+
+    /// С включением вида `maintenanceRule` (этап 12, часть S) правило — известный вид, а `futureEntity` по-прежнему
+    /// пропускается: ответ того же вида, что `pull-response-unknown-entity`, но с правилом в середине.
+    @Test func maintenanceRuleIsKnownWhileFutureEntityIsStillSkipped() throws {
+        let rule = ServerChange(
+            version: 42, modifiedAt: date("2026-10-07T09:31:00.000Z"),
+            operation: .upsert(.maintenanceRule(Self.ruleDTO)))
+        let ruleJSON = String(decoding: try APICoding.makeEncoder().encode(rule), as: UTF8.self)
+        let future =
+            #"{"version":44,"modifiedAt":"2026-10-07T09:30:00Z","op":"delete","entity":"futureEntity","id":"11111111-1111-4111-8111-111111111111"}"#
+        let response = try decode(
+            PullResponse.self, pullJSON([Self.knownDelete, ruleJSON, future, Self.knownDelete2].joined(separator: ",")))
+        #expect(response.changes.map(\.version) == [1, 42, 4])
+        #expect(response.changes[1].operation == .upsert(.maintenanceRule(Self.ruleDTO)))
+        #expect(response.skipped == ["entity:futureEntity"])
+    }
+
+    @Test func maintenanceRuleOperationsRoundTrip() throws {
+        let operations: [ChangeOperation] = [
+            .upsert(.maintenanceRule(Self.ruleDTO)),
+            .delete(.maintenanceRule, id: Self.ruleDTO.id),
+        ]
+        for operation in operations {
+            let change = PushChange(
+                changeID: vehicleID, baseVersion: 3, modifiedAt: date("2026-10-07T09:30:00.000Z"), operation: operation)
+            let decoded = try APICoding.makeDecoder().decode(
+                PushChange.self, from: try APICoding.makeEncoder().encode(change))
+            #expect(decoded == change)
+        }
+        #expect(EntityPayload.maintenanceRule(Self.ruleDTO).kind == .maintenanceRule)
+        #expect(EntityPayload.maintenanceRule(Self.ruleDTO).id == Self.ruleDTO.id)
+        #expect(EntityKind.allCases.map(\.rawValue) == ["vehicle", "serviceRecord", "maintenanceRule"])
+    }
+
     @Test func nothingSkippedMeansEmptySkipped() throws {
         let response = try decode(PullResponse.self, pullJSON(Self.knownDelete))
         #expect(response.skipped.isEmpty)

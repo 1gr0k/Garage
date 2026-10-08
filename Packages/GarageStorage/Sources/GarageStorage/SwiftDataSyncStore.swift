@@ -82,6 +82,10 @@ public actor SwiftDataSyncStore: ModelActor, SyncStore, ReceiptBlobStore {
                 }
             case .upsert(.serviceRecord(let record, let extras)):
                 try upsert(record, extras: extras)
+            case .upsert(.maintenanceRule):
+                // Заглушка до части B (этап 12): хранилища правил ещё нет. Ничего не изменено, движок запишет
+                // изменение в `skipped` и пойдёт дальше; рост `schemaVersion` в B сбросит курсор, и правила придут заново.
+                throw SyncStoreError(cannotApply: StorageMappingError.unsupportedEntity(.maintenanceRule))
             case .delete(let target):
                 try delete(target)
             }
@@ -122,6 +126,9 @@ public actor SwiftDataSyncStore: ModelActor, SyncStore, ReceiptBlobStore {
             }
         case .serviceRecord:
             if let entity = try recordEntity(ref.id) { modelContext.delete(entity) }
+        case .maintenanceRule:
+            // Заглушка до части B: правил в хранилище нет, удалять нечего.
+            break
         }
     }
 
