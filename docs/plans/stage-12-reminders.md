@@ -578,22 +578,28 @@
 `Packages/GarageSync/Sources` совпал с таблицей 9a — новых мест нет (`APICoding.swift:45` — формат даты,
 остаётся строгим).
 
-**Проверка на зубы** (временно вернул строгость, прогон через `check-runner`, затем откат `git checkout`):
+**Проверка на зубы** (по одному декодеру: временно вернул строгость только ему, прогон `GarageAPI` и `GarageSync`
+через `check-runner`, затем откат правкой; повторена в PR 12 отдельными прогонами, по одному на мутацию):
 
-| Декодер | Упавшие тесты при строгости |
-|---|---|
-| T1/T2 (`Tolerant` без перехвата `UnrecognizedChange`) | `GoldenTests.goldenExampleRoundTrips` (кейсы `pull-response-unknown-entity`, `pull-response-unknown-op`), `unknownEntityAndOpAreSkippedBetweenKnownChanges`; GarageSync: `pullSkipsUnknownEntityAndOpAndKeepsCursor` |
-| T3 (`status` → `throw`) | `goldenExampleRoundTrips` (`push-response-unknown-status`), `unknownPushStatusBecomesUnrecognized`; GarageSync: `unrecognizedPushStatusKeepsChangeQueuedAndResendsItWithSameChangeID`, `unrecognizedPushStatusDoesNotBlockNeighbours`, `unrecognizedChangeIsNotResentInLaterRoundsOfTheSameRun` |
-| T4 (`current` без перехвата) | `conflictWithUnrecognizedCurrentBecomesUnrecognized`; GarageSync: `conflictWithUnrecognizedCurrentKeepsChangeQueued` |
-| T5 (`ConflictReason` бросает на `.unknown`) | `goldenExampleRoundTrips` (`push-response-unknown-conflict-reason`), `unknownConflictReasonBecomesUnknown`; GarageSync: `unknownConflictReasonIsResolvedFromCurrent` |
-| T6 (`APIErrorCode` бросает на `.unknown`) | `goldenExampleRoundTrips` (`push-response-unknown-error-code`), `unknownErrorCodeBecomesUnknown`; GarageSync: `rejectedWithUnknownCodeTakesTheGeneralBranch` |
-| T8 (`ServiceRecord.decoded(from:)` без `.other`) | GarageSync: `unknownServiceTypeIsKeptAndSentBack`, `goldenUnknownServiceTypeIsReadAsOtherAndSentBackUnchanged`, `unknownServiceTypeSurvivesLocalEdit` |
+| Декодер | Мутация | Упавшие тесты |
+|---|---|---|
+| T1 (`entity`) | `ChangeOperation.init(tolerantFrom:)`: вместо `UnrecognizedChange("entity:…")` — `DecodingError` | GarageAPI: `unknownEntityAndOpAreSkippedBetweenKnownChanges`, `maintenanceRuleIsKnownWhileFutureEntityIsStillSkipped`, `goldenExampleRoundTrips` (`pull-response-unknown-entity`, `push-response-unknown-status`), `conflictWithUnrecognizedCurrentBecomesUnrecognized`; GarageSync: `pullSkipsUnknownEntityAndOpAndKeepsCursor`, `skippedUnrecognizedIsNotCountedTwiceAfterCursorExpired`, `conflictWithUnrecognizedCurrentKeepsChangeQueued` |
+| T2 (`op`) | то же для `UnrecognizedChange("op:…")` | GarageAPI: `unknownEntityAndOpAreSkippedBetweenKnownChanges`, `goldenExampleRoundTrips` (`pull-response-unknown-op`), `conflictWithUnrecognizedCurrentBecomesUnrecognized`; GarageSync: `pullSkipsUnknownEntityAndOpAndKeepsCursor` |
+| T3 (`status`) | `PushResult`: ветка `default` бросает `DecodingError` вместо `.unrecognized` | GarageAPI: `unknownPushStatusBecomesUnrecognized`, `goldenExampleRoundTrips` (`push-response-unknown-status`); GarageSync: `unrecognizedPushStatusKeepsChangeQueuedAndResendsItWithSameChangeID`, `unrecognizedPushStatusDoesNotBlockNeighbours`, `unrecognizedChangeIsNotResentInLaterRoundsOfTheSameRun` |
+| T4 (`current` в `conflict`) | `PushResult`: перехват `UnrecognizedChange` заменён на `DecodingError` | GarageAPI: `conflictWithUnrecognizedCurrentBecomesUnrecognized`, `goldenExampleRoundTrips` (`push-response-unknown-status`); GarageSync: `conflictWithUnrecognizedCurrentKeepsChangeQueued` |
+| T5 (`reason`) | `ConflictReason.init(from:)` бросает на `.unknown` | GarageAPI: `unknownConflictReasonBecomesUnknown`, `goldenExampleRoundTrips` (`push-response-unknown-conflict-reason`); GarageSync: `unknownConflictReasonIsResolvedFromCurrent` |
+| T6 (`code`) | `APIErrorCode.init(from:)` бросает на `.unknown` | GarageAPI: `unknownErrorCodeBecomesUnknown`, `goldenExampleRoundTrips` (`push-response-unknown-error-code`); GarageSync: `rejectedWithUnknownCodeTakesTheGeneralBranch` |
+| T8 (`serviceType` записи) | `ServiceRecord.decoded(from:)`: `catch { throw error }` вместо `.other` + `rawServiceType` | GarageSync: `unknownServiceTypeIsKeptAndSentBack`, `goldenUnknownServiceTypeIsReadAsOtherAndSentBackUnchanged`, `unknownServiceTypeSurvivesLocalEdit`; GarageAPI не падает (декодера `serviceType` там нет, DTO хранит строку) |
 | Движок: `unrecognized` → `discard` вместо «оставить в очереди» | GarageSync: `unrecognizedPushStatusKeepsChangeQueuedAndResendsItWithSameChangeID`, `unrecognizedPushStatusDoesNotBlockNeighbours`, `unrecognizedChangeIsNotResentInLaterRoundsOfTheSameRun`, `conflictWithUnrecognizedCurrentKeepsChangeQueued` |
 | Движок: без фильтра «не слать повторно в том же прогоне» | GarageSync: `unrecognizedChangeIsNotResentInLaterRoundsOfTheSameRun` (единственный) |
 
-Мутации T1–T6 и T8 применялись **одним прогоном** (затем движок — двумя отдельными), поэтому тест, ронявшийся
-по нескольким причинам сразу, указан у всех подходящих декодеров; у каждого есть хотя бы один тест, который
-падает по его причине (имена в названии теста и в golden-кейсе).
+Каждая мутация применялась отдельно. У каждого декодера есть собственный тест, названный по нему: T1 —
+`pull-response-unknown-entity`; T2 — `pull-response-unknown-op` (ни при какой другой мутации не падает); T3 —
+`unknownPushStatusBecomesUnrecognized`; T4 — `conflictWithUnrecognizedCurrentBecomesUnrecognized`; T5 —
+`unknownConflictReasonBecomesUnknown`; T6 — `unknownErrorCodeBecomesUnknown`; T8 — тесты маппинга записи в
+GarageSync. Новых тестов не потребовалось. Пересечения неизбежны, потому что декодеры вложены: T1 и T2 разбирают
+и `current` внутри `conflict`, поэтому их мутации роняют ещё и тесты T4. Две строки про движок ниже — результат
+прежних отдельных прогонов части A.
 
 T9 (`period` правила) в A — строка в DTO без декодера, поэтому зубов в A нет; тест маппинга и его проверка на
 зубы — в S. T7 — в B.
