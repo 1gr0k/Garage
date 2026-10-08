@@ -572,6 +572,56 @@
 - `docs/architecture.md`: «Use case или порт напрямую» — новые use case'ы и порты; раздел «Напоминания»
   (ссылка на план).
 
+### Итоги реализации части A (2026-10-08)
+
+Аудит A0: grep по `rawValue`, `dataCorruptedError`, `throw`, `DecodingError` в `Packages/GarageAPI/Sources` и
+`Packages/GarageSync/Sources` совпал с таблицей 9a — новых мест нет (`APICoding.swift:45` — формат даты,
+остаётся строгим).
+
+**Проверка на зубы** (временно вернул строгость, прогон через `check-runner`, затем откат `git checkout`):
+
+| Декодер | Упавшие тесты при строгости |
+|---|---|
+| T1/T2 (`Tolerant` без перехвата `UnrecognizedChange`) | `GoldenTests.goldenExampleRoundTrips` (кейсы `pull-response-unknown-entity`, `pull-response-unknown-op`), `unknownEntityAndOpAreSkippedBetweenKnownChanges`; GarageSync: `pullSkipsUnknownEntityAndOpAndKeepsCursor` |
+| T3 (`status` → `throw`) | `goldenExampleRoundTrips` (`push-response-unknown-status`), `unknownPushStatusBecomesUnrecognized`; GarageSync: `unrecognizedPushStatusKeepsChangeQueuedAndResendsItWithSameChangeID`, `unrecognizedPushStatusDoesNotBlockNeighbours`, `unrecognizedChangeIsNotResentInLaterRoundsOfTheSameRun` |
+| T4 (`current` без перехвата) | `conflictWithUnrecognizedCurrentBecomesUnrecognized`; GarageSync: `conflictWithUnrecognizedCurrentKeepsChangeQueued` |
+| T5 (`ConflictReason` бросает на `.unknown`) | `goldenExampleRoundTrips` (`push-response-unknown-conflict-reason`), `unknownConflictReasonBecomesUnknown`; GarageSync: `unknownConflictReasonIsResolvedFromCurrent` |
+| T6 (`APIErrorCode` бросает на `.unknown`) | `goldenExampleRoundTrips` (`push-response-unknown-error-code`), `unknownErrorCodeBecomesUnknown`; GarageSync: `rejectedWithUnknownCodeTakesTheGeneralBranch` |
+| T8 (`ServiceRecord.decoded(from:)` без `.other`) | GarageSync: `unknownServiceTypeIsKeptAndSentBack`, `goldenUnknownServiceTypeIsReadAsOtherAndSentBackUnchanged`, `unknownServiceTypeSurvivesLocalEdit` |
+| Движок: `unrecognized` → `discard` вместо «оставить в очереди» | GarageSync: `unrecognizedPushStatusKeepsChangeQueuedAndResendsItWithSameChangeID`, `unrecognizedPushStatusDoesNotBlockNeighbours`, `unrecognizedChangeIsNotResentInLaterRoundsOfTheSameRun`, `conflictWithUnrecognizedCurrentKeepsChangeQueued` |
+| Движок: без фильтра «не слать повторно в том же прогоне» | GarageSync: `unrecognizedChangeIsNotResentInLaterRoundsOfTheSameRun` (единственный) |
+
+Мутации T1–T6 и T8 применялись **одним прогоном** (затем движок — двумя отдельными), поэтому тест, ронявшийся
+по нескольким причинам сразу, указан у всех подходящих декодеров; у каждого есть хотя бы один тест, который
+падает по его причине (имена в названии теста и в golden-кейсе).
+
+T9 (`period` правила) в A — строка в DTO без декодера, поэтому зубов в A нет; тест маппинга и его проверка на
+зубы — в S. T7 — в B.
+
+**Отклонения от плана:**
+
+1. **`ValidationError` получил четыре случая** (`noInterval`, `periodOutOfRange(Int)`, `distanceOutOfRange(Int)` и
+   добавленный `unknownPeriod(String)` для разбора `ServicePeriod`). `ValidationError` исчерпывающе разбирается в
+   приложении (`Garage/Shared/Formatting.swift`), поэтому A трогает ещё и приложение: ветки `message` и четыре строки
+   в `Garage/Localizable.xcstrings` с русским переводом. Иначе секция `ios` краснеет (урок этапа 9). Часть A поэтому
+   проверяется не только `linux`, но и `ios`/`strings`.
+2. **`PushOutcome.unrecognized(status:)` для `conflict` с незнакомым `current`** несёт `status = "conflict/entity:<вид>"`
+   (или `conflict/op:<значение>`), а не просто `"conflict"`: в логе видно, что именно незнакомо.
+3. **Пропуск живёт только в ответах.** `ServerChange.init(from:)` бросает `UnrecognizedChange` (его ловят `PullResponse`
+   через поэлементную обёртку и `PushResult`), а `PushChange` (входящий запрос сервера) остаётся строгим — незнакомый
+   `entity`/`op` там по-прежнему `DecodingError` → `400`. `PullResponse.skipped` не кодируется (нет на проводе).
+   Тесты: `unknownEntityOrOpInPushRequestFails`.
+4. **`SyncEngine`:** изменение с `unrecognized` не отправляется повторно в следующих раундах того же прогона
+   (иначе при перебазировании соседа оно ушло бы второй раз), и попадает в `SyncReport.stillPending`.
+5. **Базис — «самая поздняя по календарному дню»**, а не по точному `Date` (запись с вечерним временем не должна
+   перебивать запись того же дня с большим пробегом); при равных днях — больший пробег, затем `id` для детерминизма.
+6. **Общий хелпер** `ServiceTypeChoice.serviceType(otherText:)` вынесен из `ServiceRecordDraft` (форма записи и форма
+   правила не дублируют переключатель); поведение формы записи не менялось (тесты зелёные).
+7. Тесты use case'ов правил — отдельный файл `UseCases/MaintenanceUseCaseTests.swift`, а не `UseCaseTests.swift`;
+   декодирование правила, как у `ServiceRecord`, пробрасывает `ValidationError` (не `DecodingError`).
+8. В `docs/api.md` у раздела «Правило обслуживания» стоит пометка о статусе: DTO и формат описаны, а `entity:
+   "maintenanceRule"` в `/v1/changes` включается в S.
+
 ---
 
 ## Часть S — сервер и включение вида `maintenanceRule` (после мержа A, локально)
