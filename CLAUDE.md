@@ -46,7 +46,7 @@ TEST_RUNNER_GARAGE_EXPECTED_LANGUAGE=en xcodebuild test-without-building -projec
 scripts/test-hooks.sh   # hook cases only (also run by the architecture section)
 ```
 
-There are no shared schemes checked in; Xcode auto-generates one per target (`Garage`, `GarageTests`) and one per local package product (`GarageCore`, `GarageStorage`, `GarageSync`, `GarageAPI`).
+There are no shared schemes checked in; Xcode auto-generates one per target (`Garage`, `GarageTests`, `GarageUITests`) and one per local package product (`GarageCore`, `GarageStorage`, `GarageSync`, `GarageAPI`).
 
 ## Architecture
 
