@@ -198,7 +198,8 @@ git -C "$ctx" add -A
 git -C "$ctx" -c user.name=hooks -c user.email=hooks@example.invalid commit -qm two
 context_case 'ahead of origin/master' '0 behind, 1 ahead' present
 git -C "$ctx" reset -q --hard "$base"
-git -C "$ctx" update-ref refs/remotes/origin/master "$(git -C "$ctx" commit-tree -p "$base" -m remote 'HEAD^{tree}')"
+remote_tip=$(git -C "$ctx" -c user.name=hooks -c user.email=hooks@example.invalid commit-tree -p "$base" -m remote 'HEAD^{tree}')
+git -C "$ctx" update-ref refs/remotes/origin/master "$remote_tip"
 context_case 'behind and ahead after divergence' '1 behind, 0 ahead' present
 git -C "$ctx" update-ref -d refs/remotes/origin/master
 context_case 'no origin/master ref' 'origin/master: no local ref' present
